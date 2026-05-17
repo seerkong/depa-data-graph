@@ -1,0 +1,109 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "kind": "signal",
+      "id": "counter",
+      "initial": 1,
+      "flags": { "in": true, "out": true }
+    },
+    {
+      "kind": "signal",
+      "id": "hello/input",
+      "initial": "",
+      "flags": { "in": true, "out": true }
+    },
+    {
+      "kind": "signal",
+      "id": "hello/name",
+      "initial": "world",
+      "flags": { "in": true, "out": true }
+    },
+
+    {
+      "kind": "signal",
+      "id": "counter/isEven",
+      "initial": false,
+      "flags": { "out": true, "computed": true }
+    },
+    {
+      "kind": "signal",
+      "id": "counter/label",
+      "initial": "odd",
+      "flags": { "out": true, "computed": true }
+    },
+
+    {
+      "kind": "signal",
+      "id": "hello/validationError",
+      "initial": null,
+      "flags": { "out": true, "computed": true, "validation": true }
+    },
+
+    {
+      "kind": "signal",
+      "id": "ping/vanilla",
+      "initial": 0,
+      "flags": { "out": true, "computed": true }
+    },
+    {
+      "kind": "signal",
+      "id": "ping/vue",
+      "initial": 0,
+      "flags": { "out": true, "computed": true }
+    },
+    {
+      "kind": "signal",
+      "id": "ping/react",
+      "initial": 0,
+      "flags": { "out": true, "computed": true }
+    },
+    {
+      "kind": "signal",
+      "id": "ping/solid",
+      "initial": 0,
+      "flags": { "out": true, "computed": true }
+    },
+
+    {
+      "kind": "computed",
+      "id": "plus100",
+      "deps": ["counter"],
+      "logicKey": "plus100",
+      "flags": { "out": true, "computed": true }
+    },
+    {
+      "kind": "computed",
+      "id": "plus300",
+      "deps": ["plus100"],
+      "logicKey": "plus300",
+      "flags": { "out": true, "computed": true }
+    },
+
+    {
+      "kind": "processor",
+      "id": "processor/counterDerived",
+      "deps": ["counter"],
+      "outputs": ["counter/isEven", "counter/label"],
+      "logicKey": "counterDerived",
+      "flags": { "computed": true }
+    },
+    {
+      "kind": "processor",
+      "id": "processor/validateInput",
+      "deps": ["hello/input"],
+      "outputs": ["hello/validationError"],
+      "logicKey": "validateInput",
+      "flags": { "computed": true, "validation": true }
+    },
+
+    {
+      "kind": "async",
+      "id": "asyncPlus100",
+      "deps": ["counter"],
+      "initial": 0,
+      "logicKey": "asyncPlus100",
+      "flags": { "out": true, "computed": true }
+    }
+  ]
+}

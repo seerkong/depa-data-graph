@@ -1,0 +1,49 @@
+{
+  "name": "depa-data-graph-vue",
+  "version": "0.1.1",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "depa-data-graph-core": "workspace:*"
+  },
+  "peerDependencies": {
+    "vue": ">=3.3"
+  },
+  "devDependencies": {
+    "vue": "^3.5.17",
+    "typescript": "^5.8.3"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/seerkong/depa-data-graph.git",
+    "directory": "packages/vue"
+  },
+  "keywords": [
+    "vue",
+    "composition-api",
+    "state-management",
+    "data-graph",
+    "mvi",
+    "framework-agnostic"
+  ]
+}

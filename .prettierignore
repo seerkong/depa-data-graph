@@ -1,0 +1,12 @@
+node_modules
+dist
+coverage
+.tmp
+.opencode
+.codex
+.claude
+
+pnpm-lock.yaml
+
+packages/*/dist
+examples/*/dist

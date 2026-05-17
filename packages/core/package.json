@@ -1,0 +1,52 @@
+{
+  "name": "depa-data-graph-core",
+  "version": "0.1.1",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "alien-signals": "^3.1.2",
+    "xstream": "^11.14.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  },
+  "peerDependencies": {
+    "alien-signals": "^3.0.0",
+    "xstream": "^11.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/seerkong/depa-data-graph.git",
+    "directory": "packages/core"
+  },
+  "keywords": [
+    "state-management",
+    "data-graph",
+    "mvi",
+    "framework-agnostic",
+    "reactive",
+    "signals",
+    "streams",
+    "xstream"
+  ]
+}

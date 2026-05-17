@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>depa-data-graph-demo</title>
+  </head>
+  <body>
+    <div id="app">
+      <header class="header">
+        <h1>depa-data-graph-demo</h1>
+        <p class="subtitle">
+          One page, mixed stacks (vanilla + Vue + React + Solid), shared explicit data graph.
+        </p>
+      </header>
+
+      <div class="grid">
+        <section class="panel">
+          <h2>Vanilla</h2>
+          <div id="vanilla-root"></div>
+        </section>
+
+        <section class="panel">
+          <h2>Vue</h2>
+          <div id="vue-root"></div>
+        </section>
+
+        <section class="panel">
+          <h2>React</h2>
+          <div id="react-root"></div>
+        </section>
+
+        <section class="panel">
+          <h2>Solid</h2>
+          <div id="solid-root"></div>
+        </section>
+      </div>
+
+      <div class="bottom-panels">
+        <section class="panel">
+          <h2>AI Chat (Stream Demo)</h2>
+          <div id="chat-root"></div>
+        </section>
+
+        <section class="panel">
+          <h2>Data Graph</h2>
+          <div id="graph-root"></div>
+        </section>
+
+        <section class="panel">
+          <h2>Activity Log</h2>
+          <div id="log-root"></div>
+        </section>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

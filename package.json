@@ -1,0 +1,45 @@
+{
+  "name": "depa-data-graph",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "pnpm --filter depa-data-graph-demo dev",
+    "build": "pnpm -r build",
+    "build:core": "pnpm --filter depa-data-graph-core build",
+    "build:demo": "pnpm --filter depa-data-graph-demo build",
+    "preview": "pnpm --filter depa-data-graph-demo preview",
+    "clean": "rm -rf packages/*/dist examples/*/dist node_modules packages/*/node_modules examples/*/node_modules",
+    "lint": "eslint . --ext .js,.cjs,.mjs,.ts,.tsx",
+    "lint:fix": "pnpm lint --fix",
+    "format": "prettier -w .",
+    "format:check": "prettier -c .",
+    "changeset": "changeset",
+    "changeset:version": "changeset version",
+    "changeset:publish": "changeset publish",
+    "ci:version": "changeset version",
+    "ci:publish": "pnpm build && changeset publish",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc -p packages/core/tsconfig.type-tests.json"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.29.8",
+    "@eslint/js": "^9.39.2",
+    "@vitest/coverage-v8": "^4.0.18",
+    "eslint": "^9.39.2",
+    "globals": "^17.1.0",
+    "prettier": "^3.8.1",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.53.1",
+    "vitest": "^4.0.18"
+  },
+  "packageManager": "pnpm@9.0.0",
+  "engines": {
+    "node": ">=18"
+  },
+  "workspaces": [
+    "packages/*",
+    "examples/*"
+  ]
+}
