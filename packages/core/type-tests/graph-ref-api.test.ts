@@ -20,7 +20,7 @@ const stage = mountGraph(
 builder
   .signal(stage.state.lexicalSeq, 1)
   .computed(stage.outputs.semanticSeq, [stage.state.lexicalSeq], (ctx) => {
-    const lexical: number = ctx.get(stage.state.lexicalSeq);
+    const lexical: number = ctx.graph.get(stage.state.lexicalSeq);
     return lexical * 2;
   });
 

@@ -1,30 +1,16 @@
 import { effect, signal } from 'alien-signals';
 
-import type {
-  ActorSelf,
-  ActorEnvelope,
-  ActorLogEntry,
-  JsonGraphSpecV1,
-} from 'depa-data-graph-core';
+import type { JsonGraphSpecV1 } from 'depa-data-graph-core';
 import {
-  ActorSystem,
   DataGraph,
   buildGraphFromJson,
   loggerPlugin,
   untracked,
   validationPlugin,
-  watch,
 } from 'depa-data-graph-core';
 
 import mainGraphSpecJson from './graph/main-graph.json';
 import { mainGraphLogic } from './graph/main-graph.logic';
-
-export type DemoMessage =
-  | { type: 'ping' }
-  | { type: 'pong'; text: string }
-  | { type: 'inc'; by: number }
-  | { type: 'setInput'; text: string }
-  | { type: 'submit' };
 
 export type DemoActorId = 'vanilla' | 'vue' | 'react' | 'solid';
 
@@ -36,12 +22,11 @@ export type ConsumerLogEntry = {
   message: string;
 };
 
-export type ActivityLogEntry = ActorLogEntry<DemoMessage> | ConsumerLogEntry;
+export type ActivityLogEntry = ConsumerLogEntry;
 
 export interface DemoRuntime {
   graph: DataGraph<DemoRuntime>;
   subgraphs: Partial<Record<DemoActorId, DataGraph<DemoRuntime>>>;
-  actorMesh: ActorSystem<DemoRuntime, DemoMessage>;
   actorLog$: ReturnType<typeof signal<ActivityLogEntry[]>>;
   logConsumer: (consumerId: string, message: string) => void;
   intents: {
@@ -100,16 +85,8 @@ export function createDemoRuntime(): DemoRuntime {
     });
   };
 
-  const actorMesh = new ActorSystem<DemoRuntime, DemoMessage>(
-    () => runtime,
-    (entry) => {
-      appendLog(entry);
-    },
-  );
-
   runtime.graph = graph;
   runtime.subgraphs = {};
-  runtime.actorMesh = actorMesh;
   runtime.actorLog$ = actorLog$;
   runtime.logConsumer = logConsumer;
 
@@ -118,13 +95,13 @@ export function createDemoRuntime(): DemoRuntime {
   graph.addComputed<number>(
     'manual/counterTimes10',
     [MODEL.counter],
-    (ctx) => ctx.get<number>(MODEL.counter) * 10,
+    (ctx) => ctx.graph.get<number>(MODEL.counter) * 10,
     { out: true },
   );
 
   graph.addConsumer('consumer/logCounter', [MODEL.counter], (ctx) => {
-    const counter = ctx.get<number>(MODEL.counter);
-    ctx.runtime.logConsumer('consumer/logCounter', `counter changed to ${counter}`);
+    const counter = ctx.graph.get<number>(MODEL.counter);
+    ctx.bizRuntime.logConsumer('consumer/logCounter', `counter changed to ${counter}`);
   });
 
   // Demo: register built-in middleware/plugins (kept small to avoid noisy startup logs).
@@ -193,18 +170,6 @@ function getMainGraphSpec(): MainGraphSpec {
 function wireSystemBehaviors(runtime: DemoRuntime): void {
   const { graph } = runtime;
 
-  watch(
-    () => graph.get<number>(MODEL.counter),
-    (value, prev) => {
-      if (prev === undefined) {
-        return;
-      }
-      if (value !== prev && value % 5 === 0) {
-        runtime.actorMesh.broadcastFrom('system', { type: 'ping' }, { excludeSelf: true });
-      }
-    },
-  );
-
   effect(() => {
     const err = graph.get<string | null>(MODEL.hello.error);
     if (err) {
@@ -216,37 +181,4 @@ function wireSystemBehaviors(runtime: DemoRuntime): void {
       graph.set<number>(MODEL.counter, (v) => v + 2);
     }
   });
-}
-
-export function createActorHandler(actorId: DemoActorId) {
-  return (self: ActorSelf<DemoRuntime, DemoMessage>, envelope: ActorEnvelope<DemoMessage>) => {
-    const { graph, actorMesh, intents } = self.runtime;
-
-    graph.set<number>(MODEL.ping(actorId), (v) => v + 1);
-
-    if (envelope.msg.type === 'ping') {
-      if (actorMesh.has(envelope.from)) {
-        self.send(envelope.from, { type: 'pong', text: `pong from ${actorId}` });
-      }
-      return;
-    }
-
-    if (envelope.msg.type === 'pong') {
-      return;
-    }
-
-    if (envelope.msg.type === 'inc') {
-      intents.increase(envelope.msg.by);
-      return;
-    }
-
-    if (envelope.msg.type === 'setInput') {
-      intents.setInput(envelope.msg.text);
-      return;
-    }
-
-    if (envelope.msg.type === 'submit') {
-      intents.submit();
-    }
-  };
 }

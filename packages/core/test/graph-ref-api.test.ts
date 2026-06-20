@@ -21,7 +21,7 @@ describe('DataGraph ref-first API', () => {
 
     graph.addSignal(counterModule.state.count, 1);
     graph.addComputed(counterModule.outputs.doubled, [counterModule.state.count], (ctx) => {
-      return ctx.get(counterModule.state.count) * 2;
+      return ctx.graph.get(counterModule.state.count) * 2;
     });
 
     expect(graph.get(counterModule.state.count)).toBe(1);
@@ -54,14 +54,14 @@ describe('DataGraph ref-first API', () => {
       .signal(stage.state.syntacticSeq, 0)
       .signal('legacy/count', 2)
       .computed(stage.outputs.semanticSeq, [stage.state.lexicalSeq, 'legacy/count'], (ctx) => {
-        return ctx.get(stage.state.lexicalSeq) + ctx.get<number>('legacy/count');
+        return ctx.graph.get(stage.state.lexicalSeq) + ctx.graph.get<number>('legacy/count');
       })
       .processor(
         'processor/promote',
         [stage.outputs.semanticSeq],
         [stage.state.syntacticSeq],
         (ctx) => {
-          ctx.set(stage.state.syntacticSeq, ctx.get(stage.outputs.semanticSeq));
+          ctx.graph.set(stage.state.syntacticSeq, ctx.graph.get(stage.outputs.semanticSeq));
         },
       );
 
@@ -111,13 +111,13 @@ describe('DataGraph ref-first API', () => {
       },
       {
         computed: {
-          double: (ctx) => ctx.get(generatedIdentity.state.counter) * 2,
+          double: (ctx) => ctx.graph.get(generatedIdentity.state.counter) * 2,
         },
         processor: {},
         consumer: {},
         async: {
           fetchUser: {
-            params: (ctx) => [ctx.get(generatedIdentity.state.counter)],
+            params: (ctx) => [ctx.graph.get(generatedIdentity.state.counter)],
             task: async (counter) => `user-${counter}`,
           },
         },

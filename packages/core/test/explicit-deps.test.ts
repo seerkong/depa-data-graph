@@ -17,7 +17,7 @@ describe('explicit deps semantics', () => {
 
     graph.addComputed<number>('c', ['a'], (ctx) => {
       computeCalls += 1;
-      return ctx.get<number>('a') + ctx.get<number>('b');
+      return ctx.graph.get<number>('a') + ctx.graph.get<number>('b');
     });
 
     expect(graph.get<number>('c')).toBe(0);
@@ -50,7 +50,7 @@ describe('explicit deps semantics', () => {
 
     graph.addProcessor('p', ['a'], ['out'], (ctx) => {
       runs += 1;
-      ctx.set<number>('out', ctx.get<number>('b'));
+      ctx.graph.set<number>('out', ctx.graph.get<number>('b'));
     });
 
     expect(graph.get<number>('out')).toBe(0);
@@ -79,7 +79,7 @@ describe('explicit deps semantics', () => {
     let calls = 0;
 
     graph.addAsync<[number], number>('job', ['a'], {
-      params: (ctx) => [ctx.get<number>('b')] as const,
+      params: (ctx) => [ctx.graph.get<number>('b')] as const,
       task: async (b) => {
         calls += 1;
         return b * 2;
@@ -112,7 +112,7 @@ describe('explicit deps semantics', () => {
     graph.addSignal('a', 0);
     graph.addSignal('b', 0);
 
-    graph.addComputed<number>('c', ['a'], (ctx) => ctx.get<number>('b'));
+    graph.addComputed<number>('c', ['a'], (ctx) => ctx.graph.get<number>('b'));
 
     expect(() => {
       graph.get<number>('c');

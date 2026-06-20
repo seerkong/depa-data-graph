@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { useGraphComputed, useGraphSignal } from 'depa-data-graph-react';
 
 import type { DemoRuntime } from '../../app/runtime';
-import { createActorHandler, MODEL } from '../../app/runtime';
+import { MODEL } from '../../app/runtime';
 import { createActorSubgraph, getActorSubgraphRefs } from '../../app/subgraphs/createActorSubgraph';
 
 function ReactPanel(props: { runtime: DemoRuntime }) {
@@ -89,12 +89,6 @@ function ReactPanel(props: { runtime: DemoRuntime }) {
         <button onClick={() => runtime.intents.increase(1)}>+1</button>
         <button onClick={() => runtime.intents.increase(10)}>+10</button>
         <button onClick={() => runtime.intents.submit()}>Submit</button>
-        <button onClick={() => runtime.actorMesh.sendFrom('react', 'solid', { type: 'ping' })}>
-          Ping Solid
-        </button>
-        <button onClick={() => runtime.actorMesh.sendFrom('react', 'vue', { type: 'inc', by: 3 })}>
-          Ask Vue +3
-        </button>
       </div>
     </div>
   );
@@ -104,8 +98,6 @@ export function mountReactView(root: HTMLElement, runtime: DemoRuntime): void {
   if (!runtime.subgraphs.react) {
     runtime.subgraphs.react = createActorSubgraph(runtime, 'react');
   }
-
-  runtime.actorMesh.register('react', createActorHandler('react'));
 
   createRoot(root).render(<ReactPanel runtime={runtime} />);
 }

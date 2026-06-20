@@ -1,12 +1,10 @@
 import { bindElement, createReactiveStore } from 'depa-data-graph-vanilla';
 
 import type { DemoRuntime } from '../../app/runtime';
-import { createActorHandler, MODEL } from '../../app/runtime';
+import { MODEL } from '../../app/runtime';
 import { createActorSubgraph, getActorSubgraphRefs } from '../../app/subgraphs/createActorSubgraph';
 
 export function mountVanillaView(root: HTMLElement, runtime: DemoRuntime): void {
-  runtime.actorMesh.register('vanilla', createActorHandler('vanilla'));
-
   if (!runtime.subgraphs.vanilla) {
     runtime.subgraphs.vanilla = createActorSubgraph(runtime, 'vanilla');
   }
@@ -44,16 +42,7 @@ export function mountVanillaView(root: HTMLElement, runtime: DemoRuntime): void 
   btnInc10.textContent = '+10';
   btnInc10.onclick = () => runtime.intents.increase(10);
 
-  const btnPingAll = document.createElement('button');
-  btnPingAll.textContent = 'Ping all';
-  btnPingAll.onclick = () => runtime.actorMesh.broadcastFrom('vanilla', { type: 'ping' });
-
-  const btnAskReact = document.createElement('button');
-  btnAskReact.textContent = 'Ask React +5';
-  btnAskReact.onclick = () =>
-    runtime.actorMesh.sendFrom('vanilla', 'react', { type: 'inc', by: 5 });
-
-  row1.append(btnInc, btnInc10, btnPingAll, btnAskReact);
+  row1.append(btnInc, btnInc10);
 
   const row2 = document.createElement('div');
   row2.className = 'row';

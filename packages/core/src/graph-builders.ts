@@ -1,4 +1,4 @@
-import type { DataGraph, GraphContext, GraphNodeIdLike, NodeFlags } from './graph';
+import type { DataGraph, GraphRuntime, GraphNodeIdLike, NodeFlags } from './graph';
 import { toNodeId } from './module-identity';
 
 export type JsonSignalNode = {
@@ -55,13 +55,13 @@ export interface JsonGraphSpecV1 {
 }
 
 export interface JsonGraphLogicRegistry<TRuntime> {
-  computed: Record<string, (ctx: GraphContext<TRuntime>, prev?: unknown) => unknown>;
-  processor: Record<string, (ctx: GraphContext<TRuntime>) => void>;
-  consumer: Record<string, (ctx: GraphContext<TRuntime>) => void>;
+  computed: Record<string, (ctx: GraphRuntime<TRuntime>, prev?: unknown) => unknown>;
+  processor: Record<string, (ctx: GraphRuntime<TRuntime>) => void>;
+  consumer: Record<string, (ctx: GraphRuntime<TRuntime>) => void>;
   async: Record<
     string,
     {
-      params: (ctx: GraphContext<TRuntime>) => unknown[];
+      params: (ctx: GraphRuntime<TRuntime>) => unknown[];
       task: (...args: unknown[]) => Promise<unknown>;
     }
   >;
@@ -104,10 +104,10 @@ function materializePublicSignalPorts<TRuntime>(
   if (hasSeparateInput) {
     graph.addSignal(inputId, initial, { in: true });
     graph.addConsumer(`__json_graph_bridge__/${rawId}/input-to-primary`, [inputId], (ctx) => {
-      ctx.set(primaryId, ctx.get(inputId));
+      ctx.graph.set(primaryId, ctx.graph.get(inputId));
     });
     graph.addConsumer(`__json_graph_bridge__/${rawId}/primary-to-input`, [primaryId], (ctx) => {
-      ctx.set(inputId, ctx.get(primaryId));
+      ctx.graph.set(inputId, ctx.graph.get(primaryId));
     });
   }
 
@@ -117,7 +117,7 @@ function materializePublicSignalPorts<TRuntime>(
     return;
   }
 
-  graph.addComputed(outputId, [primaryId], (ctx) => ctx.get(primaryId), { out: true, computed: true });
+  graph.addComputed(outputId, [primaryId], (ctx) => ctx.graph.get(primaryId), { out: true, computed: true });
 }
 
 export function buildGraphFromJson<TRuntime>(
@@ -209,20 +209,20 @@ export interface CodeGraphBuilder<TRuntime> {
   computed: (
     id: GraphNodeIdLike,
     deps: readonly GraphNodeIdLike[],
-    getter: (ctx: GraphContext<TRuntime>, prev?: unknown) => unknown,
+    getter: (ctx: GraphRuntime<TRuntime>, prev?: unknown) => unknown,
     flags?: NodeFlags,
   ) => CodeGraphBuilder<TRuntime>;
   processor: (
     id: GraphNodeIdLike,
     deps: readonly GraphNodeIdLike[],
     outputs: readonly GraphNodeIdLike[],
-    run: (ctx: GraphContext<TRuntime>) => void,
+    run: (ctx: GraphRuntime<TRuntime>) => void,
     flags?: NodeFlags,
   ) => CodeGraphBuilder<TRuntime>;
   consumer: (
     id: GraphNodeIdLike,
     deps: readonly GraphNodeIdLike[],
-    run: (ctx: GraphContext<TRuntime>) => void,
+    run: (ctx: GraphRuntime<TRuntime>) => void,
     flags?: NodeFlags,
   ) => CodeGraphBuilder<TRuntime>;
   async: (
@@ -230,7 +230,7 @@ export interface CodeGraphBuilder<TRuntime> {
     deps: readonly GraphNodeIdLike[],
     config: {
       initial: unknown;
-      params: (ctx: GraphContext<TRuntime>) => unknown[];
+      params: (ctx: GraphRuntime<TRuntime>) => unknown[];
       task: (...args: unknown[]) => Promise<unknown>;
     },
     flags?: NodeFlags,

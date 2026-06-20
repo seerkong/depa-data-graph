@@ -1,0 +1,197 @@
+<Track id="graph-runtime-reshape-drop-actor" version="1" xmlns:cdt="urn:codument:v1">
+  <Metadata>
+    <Status>completed</Status>
+    <Goal>dg core 一次破坏性变更：删自带 ActorSystem + GraphContext→GraphRuntime（内层 bizRuntime readonly + 工厂泛型）+ get/peek/set/batch 成组为 graph: GraphEffect；并用一个 codemod 一次性迁移全部下游消费者（dg-cell-mvi-core / bastard / demo），迁移后全栈 build + 测试绿。</Goal>
+    <Description>REC-1 + REC-5 + REC-6 合并为一次 breaking + 一个 codemod。依赖序在 REC-4（reuse-depa-processor-component-dispatch）之后。</Description>
+    <CommitMode>manual</CommitMode>
+    <CreatedAt>2026-06-20T00:00:00Z</CreatedAt>
+    <UpdatedAt>2026-06-20T22:35:00Z</UpdatedAt>
+    <cdt:Risks>
+      <cdt:Risk>codemod 误伤 DataGraph 实例命令式 API（graph.get/set）与节点 ctx 回调（ctx.get/set）形态相近——须按变量来源/类型精确区分。</cdt:Risk>
+      <cdt:Risk>跨仓半破坏：dg major 发版与下游迁移须同批落地，验收要求全栈同时绿。</cdt:Risk>
+      <cdt:Risk>bastard 未声明依赖卫生若漏补会在隔离构建暴雷。</cdt:Risk>
+    </cdt:Risks>
+  </Metadata>
+
+  <Ports scope="track">
+    <MaterialBundle role="input"  name="behavior-deltas" domain="behavior"  path="vfs://./behavior_deltas/"/>
+    <MaterialBundle role="output" name="behavior"        domain="codument"  path="vfs://@/codument/behaviors/"/>
+  </Ports>
+
+  <TaskSpace id="space_graph-runtime-reshape-drop-actor" name="graph-runtime-reshape-drop-actor" version="1">
+    <Description>把 dg core 三处底座改造（删 ActorSystem + 改名 GraphRuntime + effect 成组）合为一次 breaking + 一个 codemod，一次性迁移全部下游消费者并验收全栈绿。</Description>
+    <SubNodes>
+
+      <!-- ===================== P0 基线 ===================== -->
+      <TaskGroup id="P0" name="基线" status="DONE" order="0">
+        <Description>锁定改造前事实快照与全栈基线绿，作为 codemod 完工对照。</Description>
+        <cdt:Gate>
+          <cdt:Criterion>改造前计数已快照（GraphContext / ctx.* / ActorSystem 消费）</cdt:Criterion>
+          <cdt:Criterion>dg core + dg-cell-mvi + bastard + demo 改造前 build/test 已绿</cdt:Criterion>
+        </cdt:Gate>
+        <SubNodes>
+          <Task id="T0.1" name="快照改造前计数" status="DONE" order="0" priority="P0">
+            <Description>复核并记录：GraphContext=33/5 文件、dg 内 ctx.*=41、上层 ctx.*=131、ActorSystem 生产消费=0；写入 analysis/findings 作对照锚。</Description>
+            <cdt:Acceptance>
+              <cdt:Criterion id="T0.1-AC1" checked="true">改造前计数快照已记录</cdt:Criterion>
+            </cdt:Acceptance>
+          </Task>
+          <Task id="T0.2" name="全栈基线绿" status="DONE" order="1" priority="P0">
+            <Description>跑 dg core + dg-cell-mvi-core + bastard + examples/demo 的 build/test，确认改造前已绿（区分既有红与本 track 引入）。</Description>
+            <cdt:Acceptance>
+              <cdt:Criterion id="T0.2-AC1" checked="true">改造前全栈 build/test 状态已记录</cdt:Criterion>
+            </cdt:Acceptance>
+          </Task>
+        </SubNodes>
+        <Hooks>
+          <Hook on="phase:after"><cdt:AttractorCheck use="coding"/></Hook>
+        </Hooks>
+      </TaskGroup>
+
+      <!-- ===================== P1 删 ActorSystem (REC-1) ===================== -->
+      <TaskGroup id="P1" name="删 ActorSystem" status="DONE" order="1">
+        <Description>REC-1：移除 dg 自带 ActorSystem；需要 actor 的消费者改用 depa-actor。</Description>
+        <cdt:Gate>
+          <cdt:Criterion>actor.ts 已删；index.ts 无 ActorSystem 及 actor 类型导出</cdt:Criterion>
+        </cdt:Gate>
+        <SubNodes>
+          <Task id="T1.1" name="删 actor.ts 与导出" status="DONE" order="0" priority="P0">
+            <Description>删除 packages/core/src/actor.ts；从 index.ts 移除 ActorSystem 导出与 actor 类型再导出（约 index.ts:46-55）。</Description>
+            <cdt:Acceptance>
+              <cdt:Criterion id="T1.1-AC1" checked="true">packages/core/src/actor.ts 已移除</cdt:Criterion>
+              <cdt:Criterion id="T1.1-AC2" checked="true">index.ts 无 ActorSystem 及 actor 类型导出</cdt:Criterion>
+            </cdt:Acceptance>
+          </Task>
+          <Task id="T1.2" name="actor 消费者改用 depa-actor" status="DONE" order="1" priority="P0">
+            <Description>test/actor.test.ts 与 examples/demo 的 ActorSystem 用法改用 depa-actor（依赖 REC-4 底座已稳）。注：depa-actor 不在本仓 pnpm workspace（workspaces=packages/*+examples/*），无法 workspace:* 解析；按 track 备用方案删除 demo actor 面（actorMesh/createActorHandler/register/sendFrom/broadcastFrom + actor log 接线），保留 counter/hello/async/subgraph demo，demo vite build 绿。actor.test.ts 已删（其测的 ActorSystem 已删）。</Description>
+            <cdt:Acceptance>
+              <cdt:Criterion id="T1.2-AC1" checked="true">demo actor 面已移除（depa-actor 不可解析，按备用方案删除）；dg core build 绿、demo build 绿</cdt:Criterion>
+            </cdt:Acceptance>
+          </Task>
+        </SubNodes>
+        <Hooks>
+          <Hook on="phase:after"><cdt:AttractorCheck use="coding"/></Hook>
+        </Hooks>
+      </TaskGroup>
+
+      <!-- ===================== P2 改名 GraphRuntime/bizRuntime (REC-5) ===================== -->
+      <TaskGroup id="P2" name="改名 GraphRuntime/bizRuntime" status="DONE" order="2">
+        <Description>REC-5：type GraphContext→GraphRuntime；内层 runtime→bizRuntime（readonly）；工厂层补 TRuntime 泛型去 any。</Description>
+        <cdt:Gate>
+          <cdt:Criterion>GraphContext 0 残留；工厂层无 &lt;any&gt;</cdt:Criterion>
+        </cdt:Gate>
+        <SubNodes>
+          <Task id="T2.1" name="type 改名 GraphRuntime" status="DONE" order="0" priority="P0">
+            <Description>graph.ts:58-70 type GraphContext→GraphRuntime（33 处机械改名）；index.ts:12 导出名同步。</Description>
+            <cdt:Acceptance>
+              <cdt:Criterion id="T2.1-AC1" checked="true">grep GraphContext（src+examples，excl dist）= 0</cdt:Criterion>
+              <cdt:Criterion id="T2.1-AC2" checked="true">index.ts 导出 GraphRuntime，不再导出 GraphContext</cdt:Criterion>
+            </cdt:Acceptance>
+          </Task>
+          <Task id="T2.2" name="内层 bizRuntime readonly" status="DONE" order="1" priority="P0">
+            <Description>内层字段 runtime→bizRuntime 并标 readonly；makeCtx（graph.ts:917-925）相应改字段名；撞名消除。</Description>
+            <cdt:Acceptance>
+              <cdt:Criterion id="T2.2-AC1" checked="true">内层字段为 bizRuntime 且 readonly；graphRuntime.runtime 撞名消除（makeMiddlewareCtx 的 MiddlewareContext.runtime 独立类型，未动）</cdt:Criterion>
+            </cdt:Acceptance>
+          </Task>
+          <Task id="T2.3" name="工厂层补 TRuntime 泛型" status="DONE" order="2" priority="P0">
+            <Description>typed-graph-v2.ts:13,25 GraphContext&lt;any&gt;→GraphRuntime&lt;TRuntime&gt;，消除 any。</Description>
+            <cdt:Acceptance>
+              <cdt:Criterion id="T2.3-AC1" checked="true">工厂层 getter 无 &lt;any&gt;（:13/:25 现为 GraphRuntime&lt;TRuntime&gt;，TRuntime=unknown 默认；ComputedSchema/computed 补泛型）</cdt:Criterion>
+            </cdt:Acceptance>
+          </Task>
+        </SubNodes>
+        <Hooks>
+          <Hook on="phase:after"><cdt:AttractorCheck use="coding"/></Hook>
+        </Hooks>
+      </TaskGroup>
+
+      <!-- ===================== P3 effect 成组 graph (REC-6) ===================== -->
+      <TaskGroup id="P3" name="effect 成组 graph" status="DONE" order="3">
+        <Description>REC-6：定义 GraphEffect={get;peek;set;batch}；GraphRuntime={readonly bizRuntime; graph: GraphEffect}；dg 内 ctx.*→ctx.graph.*；零行为变更。</Description>
+        <cdt:Gate>
+          <cdt:Criterion>runtime 顶层无裸 get/peek/set/batch；成组进 graph 子对象</cdt:Criterion>
+          <cdt:Criterion>dg 内 ctx.get/peek/set/batch 0 残留（全替 ctx.graph.*）</cdt:Criterion>
+        </cdt:Gate>
+        <SubNodes>
+          <Task id="T3.1" name="定义 GraphEffect 并 reshape GraphRuntime" status="DONE" order="0" priority="P0">
+            <Description>新增 interface GraphEffect；reshape GraphRuntime&lt;TBiz&gt;={readonly bizRuntime: TBiz; graph: GraphEffect}；makeCtx 把 get/peek/set/batch 收进 graph 子对象。</Description>
+            <cdt:Acceptance>
+              <cdt:Criterion id="T3.1-AC1" checked="true">GraphRuntime 形态 = { readonly bizRuntime; graph: GraphEffect }（graph.ts:71-74）；顶层无裸 effect 方法；GraphEffect 已导出</cdt:Criterion>
+            </cdt:Acceptance>
+          </Task>
+          <Task id="T3.2" name="dg 内 ctx.*→ctx.graph.*" status="DONE" order="1" priority="P0">
+            <Description>迁移 dg 内 41 处 ctx.get/peek/set/batch（graph-builders.ts 等 src+examples+test）为 ctx.graph.*；零行为变更。</Description>
+            <cdt:Acceptance>
+              <cdt:Criterion id="T3.2-AC1" checked="true">dg 内 ctx.get/peek/set/batch（回调）0 残留；ctx.graph.* = 43</cdt:Criterion>
+              <cdt:Criterion id="T3.2-AC2" checked="true">图机制行为/调度语义不变（dg core vitest 30 files / 91 tests 绿）</cdt:Criterion>
+            </cdt:Acceptance>
+          </Task>
+        </SubNodes>
+        <Hooks>
+          <Hook on="phase:after"><cdt:AttractorCheck use="coding"/></Hook>
+        </Hooks>
+      </TaskGroup>
+
+      <!-- ===================== P4 codemod 全消费者 ===================== -->
+      <TaskGroup id="P4" name="codemod 全消费者" status="DONE" order="4">
+        <Description>编写并运行一个 codemod，一次性迁移全部下游消费者 ctx 回调 ctx.*→ctx.graph.*（精确区分实例 API），并补 bastard 依赖声明。</Description>
+        <cdt:Gate>
+          <cdt:Criterion>codemod 已覆盖 dg-cell-mvi-core + bastard + demo</cdt:Criterion>
+          <cdt:Criterion>DataGraph 实例命令式 API（graph.*）未被改动</cdt:Criterion>
+        </cdt:Gate>
+        <SubNodes>
+          <Task id="T4.1" name="编写 codemod（精确区分 ctx 回调 vs 实例 API）" status="DONE" order="0" priority="P0">
+            <Description>AST 级 codemod：仅改节点回调 ctx（GraphRuntime 类型/回调形参）的 get/peek/set/batch→graph.*；不动 DataGraph 实例 graph.*（如 streamSignalStore.ts:141/158/190/191）。实现：因 ctx.* 全为回调形参且实例用独立变量名 graph.*，用机械正则替换 \bctx.(get|peek|set|batch)\b→ctx.graph.$1（perl -i），先 grep 全量定位、改、再 grep 复核零残留。文件边界：仅改 import dg core 的文件（coreGraphDepa.ts/streamSignalStore.ts）；coreGraph.ts 走 @data-graph-mvi/core 旧引擎（扁平 ctx），不改。</Description>
+            <cdt:Acceptance>
+              <cdt:Criterion id="T4.1-AC1" checked="true">codemod 仅改 ctx 回调（66 处），不动实例 graph.*（streamSignalStore.ts:141/158/190/191 + coreGraphDepa.ts:487-504 保持 graph.*）；旧引擎 coreGraph.ts 未动</cdt:Criterion>
+            </cdt:Acceptance>
+          </Task>
+          <Task id="T4.2" name="跑 codemod：dg-cell-mvi-core + bastard + demo" status="DONE" order="1" priority="P0">
+            <Description>迁移 dg-cell-mvi-core（streamSignalStore.ts:92）+ bastard（coreGraphDepa.ts 65 处）+ demo（P1-P3 已含）的回调 ctx.*→ctx.graph.*。修正：bastard 实际 dg-core-bound 改动 = coreGraphDepa.ts 65 处（coreGraphDepa.ts import depa-data-graph-core）；coreGraph.ts 的 65 处属 @data-graph-mvi/core 旧引擎，扁平 ctx 不改。</Description>
+            <cdt:Acceptance>
+              <cdt:Criterion id="T4.2-AC1" checked="true">下游 dg-core-bound ctx.get/peek/set/batch（回调）0 残留：coreGraphDepa.ts 65→ctx.graph.* + streamSignalStore.ts:92 1→ctx.graph.get；workbench GraphContext=0、ctx.runtime=0</cdt:Criterion>
+            </cdt:Acceptance>
+          </Task>
+          <Task id="T4.3" name="补 bastard 依赖声明" status="DONE" order="2" priority="P0">
+            <Description>bastard/package.json 补对 depa-data-graph(-core) 的显式依赖声明（coreGraphDepa.ts:14 直 import 但未声明）。</Description>
+            <cdt:Acceptance>
+              <cdt:Criterion id="T4.3-AC1" checked="true">bastard/package.json dependencies 含 "depa-data-graph-core": "workspace:*"</cdt:Criterion>
+            </cdt:Acceptance>
+          </Task>
+        </SubNodes>
+        <Hooks>
+          <Hook on="phase:after"><cdt:AttractorCheck use="coding"/></Hook>
+        </Hooks>
+      </TaskGroup>
+
+      <!-- ===================== P5 验收全栈绿 ===================== -->
+      <TaskGroup id="P5" name="验收全栈绿" status="DONE" order="5">
+        <Description>残留扫描 + 全栈 build/test 绿，确认大 BREAKING 迁移后无半破坏。</Description>
+        <cdt:Gate>
+          <cdt:Criterion>所有残留扫描为 0；全栈 build/test 绿</cdt:Criterion>
+        </cdt:Gate>
+        <SubNodes>
+          <Task id="T5.1" name="残留扫描" status="DONE" order="0" priority="P0">
+            <Description>GraphContext=0、ctx.get/peek/set/batch(回调)=0、工厂层 &lt;any&gt;=0、ActorSystem 导出=0。</Description>
+            <cdt:Acceptance>
+              <cdt:Criterion id="T5.1-AC1" checked="true">四项残留扫描全为 0：dg GraphContext=0/ctx.*=0/工厂getter&lt;any&gt;=0/index.ts ActorSystem=0 + actor.ts 已删；workbench GraphContext=0/dg-core-bound ctx.*=0/ctx.runtime=0/dg-ActorSystem-import=0（唯一 ActorSystem 命中是 depa-actor 的）；legacy coreGraph.ts 65 处保留未动（@data-graph-mvi/core 旧引擎扁平 ctx）；实例 graph.* 边界保留（streamSignalStore:141/158/190/191 + coreGraphDepa:487-504）</cdt:Criterion>
+            </cdt:Acceptance>
+          </Task>
+          <Task id="T5.2" name="全栈 build + test 绿" status="DONE" order="1" priority="P0">
+            <Description>dg core + dg-cell-mvi + bastard + demo 全部 build + 测试绿；bastard 含依赖声明后隔离构建也绿。</Description>
+            <cdt:Acceptance>
+              <cdt:Criterion id="T5.2-AC1" checked="true">dg core build(tsc) exit 0 + vitest 30 files/91 tests 绿 + demo vite build exit 0；dg-cell-mvi-core vitest 3 files/14 tests 绿（含 streamSignalStore.test 7）+ tsc 改动文件 0 错；bastard vitest 16 files/289 tests 绿（含 pipeline-debug/flow-editor-runtime/mutation-pipeline depa 路径）+ tsc 改动文件 coreGraphDepa.ts 0 错。前/后对照证明：codemod 把 bastard tsc 错从 193→125（修 68，引入 0）；剩 125 全为改动外文件预存类型债（FsCrudDemo/pipeline-debug contract/monaco/fast-crud tests/vendor actor.ts）</cdt:Criterion>
+            </cdt:Acceptance>
+          </Task>
+        </SubNodes>
+        <Hooks>
+          <Hook on="phase:after" status="DONE"><cdt:GapLoop max-rounds="5" on-exhausted="block" result="NO_GAP"/></Hook>
+          <Hook on="phase:after" status="DONE"><cdt:AttractorCheck use="coding" result="PASS"/></Hook>
+        </Hooks>
+      </TaskGroup>
+
+    </SubNodes>
+  </TaskSpace>
+
+</Track>

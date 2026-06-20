@@ -55,8 +55,7 @@ export interface GraphNode<T = unknown> {
   };
 }
 
-export interface GraphContext<TRuntime> {
-  runtime: TRuntime;
+export interface GraphEffect {
   get<T>(id: string): T;
   get<TValue, TSection extends NodeSection>(id: NodeRef<TValue, TSection>): TValue;
   get<T>(id: GraphNodeIdLike): T;
@@ -67,6 +66,11 @@ export interface GraphContext<TRuntime> {
   set<TValue, TSection extends NodeSection>(id: NodeRef<TValue, TSection>, value: Setter<TValue>): void;
   set<T>(id: GraphNodeIdLike, value: Setter<T>): void;
   batch<T>(fn: () => T): T;
+}
+
+export interface GraphRuntime<TBiz> {
+  readonly bizRuntime: TBiz;
+  graph: GraphEffect;
 }
 
 export type GraphNodeIdLike = string | NodeRef<unknown, NodeSection>;
@@ -557,25 +561,25 @@ export class DataGraph<TRuntime> {
   addComputed<T>(
     id: string,
     deps: readonly GraphNodeIdLike[],
-    getter: (ctx: GraphContext<TRuntime>, prev?: T) => T,
+    getter: (ctx: GraphRuntime<TRuntime>, prev?: T) => T,
     flags?: NodeFlags,
   ): GraphNode<T>;
   addComputed<T, TSection extends NodeSection>(
     id: NodeRef<T, TSection>,
     deps: readonly GraphNodeIdLike[],
-    getter: (ctx: GraphContext<TRuntime>, prev?: T) => T,
+    getter: (ctx: GraphRuntime<TRuntime>, prev?: T) => T,
     flags?: NodeFlags,
   ): GraphNode<T>;
   addComputed<T>(
     id: GraphNodeIdLike,
     deps: readonly GraphNodeIdLike[],
-    getter: (ctx: GraphContext<TRuntime>, prev?: T) => T,
+    getter: (ctx: GraphRuntime<TRuntime>, prev?: T) => T,
     flags?: NodeFlags,
   ): GraphNode<T>;
   addComputed<T>(
     id: GraphNodeIdLike,
     deps: readonly GraphNodeIdLike[],
-    getter: (ctx: GraphContext<TRuntime>, prev?: T) => T,
+    getter: (ctx: GraphRuntime<TRuntime>, prev?: T) => T,
     flags: NodeFlags = {},
   ): GraphNode<T> {
     const nodeId = toNodeId(id);
@@ -630,28 +634,28 @@ export class DataGraph<TRuntime> {
     id: string,
     deps: readonly GraphNodeIdLike[],
     outputs: readonly GraphNodeIdLike[],
-    run: (ctx: GraphContext<TRuntime>) => void,
+    run: (ctx: GraphRuntime<TRuntime>) => void,
     flags?: NodeFlags,
   ): GraphNode;
   addProcessor<TSection extends NodeSection>(
     id: NodeRef<unknown, TSection>,
     deps: readonly GraphNodeIdLike[],
     outputs: readonly GraphNodeIdLike[],
-    run: (ctx: GraphContext<TRuntime>) => void,
+    run: (ctx: GraphRuntime<TRuntime>) => void,
     flags?: NodeFlags,
   ): GraphNode;
   addProcessor(
     id: GraphNodeIdLike,
     deps: readonly GraphNodeIdLike[],
     outputs: readonly GraphNodeIdLike[],
-    run: (ctx: GraphContext<TRuntime>) => void,
+    run: (ctx: GraphRuntime<TRuntime>) => void,
     flags?: NodeFlags,
   ): GraphNode;
   addProcessor(
     id: GraphNodeIdLike,
     deps: readonly GraphNodeIdLike[],
     outputs: readonly GraphNodeIdLike[],
-    run: (ctx: GraphContext<TRuntime>) => void,
+    run: (ctx: GraphRuntime<TRuntime>) => void,
     flags: NodeFlags = {},
   ): GraphNode {
     const nodeId = toNodeId(id);
@@ -696,7 +700,7 @@ export class DataGraph<TRuntime> {
     id: string,
     deps: readonly GraphNodeIdLike[],
     config: {
-      params: (ctx: GraphContext<TRuntime>) => TArgs;
+      params: (ctx: GraphRuntime<TRuntime>) => TArgs;
       task: (...args: TArgs) => Promise<TResult>;
       initial: TResult;
       projections?: AsyncProjectionIds;
@@ -707,7 +711,7 @@ export class DataGraph<TRuntime> {
     id: NodeRef<unknown, TSection>,
     deps: readonly GraphNodeIdLike[],
     config: {
-      params: (ctx: GraphContext<TRuntime>) => TArgs;
+      params: (ctx: GraphRuntime<TRuntime>) => TArgs;
       task: (...args: TArgs) => Promise<TResult>;
       initial: TResult;
       projections?: AsyncProjectionIds;
@@ -718,7 +722,7 @@ export class DataGraph<TRuntime> {
     id: GraphNodeIdLike,
     deps: readonly GraphNodeIdLike[],
     config: {
-      params: (ctx: GraphContext<TRuntime>) => TArgs;
+      params: (ctx: GraphRuntime<TRuntime>) => TArgs;
       task: (...args: TArgs) => Promise<TResult>;
       initial: TResult;
       projections?: AsyncProjectionIds;
@@ -729,7 +733,7 @@ export class DataGraph<TRuntime> {
     id: GraphNodeIdLike,
     deps: readonly GraphNodeIdLike[],
     config: {
-      params: (ctx: GraphContext<TRuntime>) => TArgs;
+      params: (ctx: GraphRuntime<TRuntime>) => TArgs;
       task: (...args: TArgs) => Promise<TResult>;
       initial: TResult;
       projections?: AsyncProjectionIds;
@@ -858,25 +862,25 @@ export class DataGraph<TRuntime> {
   addConsumer(
     id: string,
     deps: readonly GraphNodeIdLike[],
-    run: (ctx: GraphContext<TRuntime>) => void,
+    run: (ctx: GraphRuntime<TRuntime>) => void,
     flags?: NodeFlags,
   ): GraphNode;
   addConsumer<TSection extends NodeSection>(
     id: NodeRef<unknown, TSection>,
     deps: readonly GraphNodeIdLike[],
-    run: (ctx: GraphContext<TRuntime>) => void,
+    run: (ctx: GraphRuntime<TRuntime>) => void,
     flags?: NodeFlags,
   ): GraphNode;
   addConsumer(
     id: GraphNodeIdLike,
     deps: readonly GraphNodeIdLike[],
-    run: (ctx: GraphContext<TRuntime>) => void,
+    run: (ctx: GraphRuntime<TRuntime>) => void,
     flags?: NodeFlags,
   ): GraphNode;
   addConsumer(
     id: GraphNodeIdLike,
     deps: readonly GraphNodeIdLike[],
-    run: (ctx: GraphContext<TRuntime>) => void,
+    run: (ctx: GraphRuntime<TRuntime>) => void,
     flags: NodeFlags = {},
   ): GraphNode {
     const nodeId = toNodeId(id);
@@ -914,13 +918,15 @@ export class DataGraph<TRuntime> {
     return node;
   }
 
-  private makeCtx(): GraphContext<TRuntime> {
+  private makeCtx(): GraphRuntime<TRuntime> {
     return {
-      runtime: this.getRuntime(),
-      get: <T>(id: GraphNodeIdLike) => this.get<T>(id),
-      peek: <T>(id: GraphNodeIdLike) => this.peek<T>(id),
-      set: <T>(id: GraphNodeIdLike, value: Setter<T>) => this.set<T>(id, value),
-      batch: (fn) => this.batch(fn),
+      bizRuntime: this.getRuntime(),
+      graph: {
+        get: <T>(id: GraphNodeIdLike) => this.get<T>(id),
+        peek: <T>(id: GraphNodeIdLike) => this.peek<T>(id),
+        set: <T>(id: GraphNodeIdLike, value: Setter<T>) => this.set<T>(id, value),
+        batch: (fn) => this.batch(fn),
+      },
     };
   }
 

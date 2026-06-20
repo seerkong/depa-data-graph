@@ -7,7 +7,7 @@ describe('createTypedGraph (schema-first)', () => {
     const graph = createTypedGraph(
       {
         counter: signal(1),
-        doubled: computed(['counter'], (ctx) => ctx.get<number>('counter') * 2),
+        doubled: computed(['counter'], (ctx) => ctx.graph.get<number>('counter') * 2),
       } as const,
       () => ({ tag: 'runtime' }),
     );

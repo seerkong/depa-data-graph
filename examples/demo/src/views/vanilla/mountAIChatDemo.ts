@@ -76,12 +76,12 @@ function createChatRuntime(): ChatRuntime {
   graph.addSignal<string>('inputValue', '');
 
   graph.addComputed<number>('messageCount', ['messages'], (ctx) => {
-    return ctx.get<ChatMessage[]>('messages').length;
+    return ctx.graph.get<ChatMessage[]>('messages').length;
   });
 
   graph.addComputed<string>('streamingDisplay', ['currentResponse', 'isStreaming'], (ctx) => {
-    const response = ctx.get<string>('currentResponse');
-    const streaming = ctx.get<boolean>('isStreaming');
+    const response = ctx.graph.get<string>('currentResponse');
+    const streaming = ctx.graph.get<boolean>('isStreaming');
     return streaming ? response + '▊' : response;
   });
 

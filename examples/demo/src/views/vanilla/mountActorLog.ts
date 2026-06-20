@@ -26,23 +26,13 @@ export function mountActorLog(root: HTMLElement, runtime: DemoRuntime): void {
 
       const text = document.createElement('span');
       text.className = 'code';
-
-      if (e.kind === 'consumer') {
-        text.textContent = `${e.consumerId} #${e.id} ${new Date(e.ts).toLocaleTimeString()}`;
-      } else {
-        text.textContent = `${e.from} -> ${e.to} #${e.id} ${new Date(e.ts).toLocaleTimeString()}`;
-      }
+      text.textContent = `${e.consumerId} #${e.id} ${new Date(e.ts).toLocaleTimeString()}`;
 
       line1.append(pill, text);
 
       const line2 = document.createElement('div');
       line2.className = 'code';
-
-      if (e.kind === 'consumer') {
-        line2.textContent = e.message;
-      } else {
-        line2.textContent = e.error ? `error: ${e.error}` : JSON.stringify(e.msg);
-      }
+      line2.textContent = e.message;
 
       item.append(line1, line2);
       list.append(item);

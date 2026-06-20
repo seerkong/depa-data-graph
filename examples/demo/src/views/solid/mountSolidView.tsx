@@ -6,7 +6,7 @@ import { render } from 'solid-js/web';
 import { useGraphSignal } from 'depa-data-graph-solid';
 
 import type { DemoRuntime } from '../../app/runtime';
-import { createActorHandler, MODEL } from '../../app/runtime';
+import { MODEL } from '../../app/runtime';
 import { createActorSubgraph, getActorSubgraphRefs } from '../../app/subgraphs/createActorSubgraph';
 
 function SolidPanel(props: { runtime: DemoRuntime }) {
@@ -77,9 +77,6 @@ function SolidPanel(props: { runtime: DemoRuntime }) {
         <button onClick={() => runtime.intents.increase(1)}>+1</button>
         <button onClick={() => runtime.intents.increase(10)}>+10</button>
         <button onClick={() => runtime.intents.submit()}>Submit</button>
-        <button onClick={() => runtime.actorMesh.sendFrom('solid', 'vanilla', { type: 'ping' })}>
-          Ping Vanilla
-        </button>
       </div>
     </div>
   );
@@ -89,8 +86,6 @@ export function mountSolidView(root: HTMLElement, runtime: DemoRuntime): void {
   if (!runtime.subgraphs.solid) {
     runtime.subgraphs.solid = createActorSubgraph(runtime, 'solid');
   }
-
-  runtime.actorMesh.register('solid', createActorHandler('solid'));
 
   render(() => <SolidPanel runtime={runtime} />, root);
 }

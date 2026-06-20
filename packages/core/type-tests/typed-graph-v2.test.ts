@@ -9,7 +9,7 @@ const schema = {
   counter: signal(0),
   doubled: computed(
     ['counter'],
-    (ctx: { get<T>(id: string): T }) => ctx.get<number>('counter') * 2,
+    (ctx: { graph: { get<T>(id: string): T } }) => ctx.graph.get<number>('counter') * 2,
   ),
 } as const;
 

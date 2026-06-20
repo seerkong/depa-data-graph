@@ -3,12 +3,10 @@ import { computed, createApp, defineComponent, h } from 'vue';
 import { useGraphSignal } from 'depa-data-graph-vue';
 
 import type { DemoRuntime } from '../../app/runtime';
-import { createActorHandler, MODEL } from '../../app/runtime';
+import { MODEL } from '../../app/runtime';
 import { createActorSubgraph, getActorSubgraphRefs } from '../../app/subgraphs/createActorSubgraph';
 
 export function mountVueView(root: HTMLElement, runtime: DemoRuntime): void {
-  runtime.actorMesh.register('vue', createActorHandler('vue'));
-
   if (!runtime.subgraphs.vue) {
     runtime.subgraphs.vue = createActorSubgraph(runtime, 'vue');
   }
@@ -102,13 +100,6 @@ export function mountVueView(root: HTMLElement, runtime: DemoRuntime): void {
                 onClick: () => runtime.intents.submit(),
               },
               'Submit',
-            ),
-            h(
-              'button',
-              {
-                onClick: () => runtime.actorMesh.sendFrom('vue', 'react', { type: 'ping' }),
-              },
-              'Ping React',
             ),
           ]),
         ]);

@@ -1,0 +1,112 @@
+<behaviors capability="graph-runtime" version="1">
+  <requirement id="runtime-naming">
+    <statement>注入每个节点逻辑的统一运行时类型 SHALL 命名为 `GraphRuntime`（取代 `GraphContext`），因为它是 DataGraph 实例唯一的、对所有节点结构与行为一致的 runtime（makeCtx 无 per-node 切分），而非 per-node 切面。重命名后代码库中 SHALL 不残留 `GraphContext` 标识符。</statement>
+    <suite id="rename" name="改名收敛">
+      <case id="no-graphcontext-left">
+        <given>dg core 与其 examples 中原有 33 处 GraphContext 引用（graph.ts / graph-builders.ts / typed-graph-v2.ts / index.ts / examples/demo）</given>
+        <when>本 track 实施改名</when>
+        <then>全部替换为 `GraphRuntime`；`grep &quot;GraphContext&quot;` 在 packages 与 examples 源码（excl dist）命中 SHALL 为 0</then>
+      </case>
+      <case id="public-export-renamed">
+        <given>index.ts 此前导出 public type `GraphContext`（index.ts:12）</given>
+        <when>改名完成</when>
+        <then>index.ts SHALL 导出 `GraphRuntime` 而不再导出 `GraphContext`</then>
+      </case>
+    </suite>
+  </requirement>
+  <requirement id="biz-runtime-field">
+    <statement>`GraphRuntime` 中承载用户/业务注入领域依赖的内层字段 SHALL 命名为 `bizRuntime`（取代内层 `runtime`），以消除 `graphRuntime.runtime`（runtime.runtime）撞名；该字段 SHALL 标记为 `readonly`。</statement>
+    <suite id="field" name="内层字段正名">
+      <case id="no-name-clash">
+        <given>原 GraphContext.runtime 与外层 runtime 同名造成 ctx.runtime ≈ runtime.runtime 撞名</given>
+        <when>内层字段改名为 bizRuntime</when>
+        <then>撞名消除；节点逻辑通过 `rt.bizRuntime.svc` 访问领域依赖</then>
+      </case>
+      <case id="readonly">
+        <given>内层依赖快照不应被节点逻辑改写</given>
+        <when>定义 GraphRuntime</when>
+        <then>`bizRuntime` 字段 SHALL 声明为 `readonly`</then>
+      </case>
+    </suite>
+  </requirement>
+  <requirement id="factory-generic">
+    <statement>typed-graph-v2 工厂层（ComputedSchema.getter 与 computed()）SHALL 以显式 `TRuntime` 泛型参数化 `GraphRuntime`，取代当前 `GraphContext&lt;any&gt;`（typed-graph-v2.ts:13、:25），消除 `any`。</statement>
+    <suite id="generic" name="泛型收敛">
+      <case id="no-any">
+        <given>typed-graph-v2.ts:13 与 :25 当前为 `GraphContext&lt;any&gt;`</given>
+        <when>工厂层补 TRuntime 泛型</when>
+        <then>工厂层 SHALL 不再出现 `GraphRuntime&lt;any&gt;` / `&lt;any&gt;`</then>
+      </case>
+    </suite>
+  </requirement>
+  <requirement id="effect-grouping">
+    <statement>图状态副作用操作 `get`/`peek`/`set`/`batch` SHALL 成组为一个 effect 契约对象 `GraphEffect = { get; peek; set; batch }`，并以 `graph` 字段挂在 `GraphRuntime` 上，使 runtime = 纯数据(`bizRuntime`) + effect 契约(`graph`) 两桶。最终形态：`interface GraphRuntime&lt;TBiz&gt; { readonly bizRuntime: TBiz; graph: GraphEffect }`。节点逻辑经 `rt.graph.get(x)` 访问图 effect、`rt.bizRuntime.svc` 访问领域依赖。</statement>
+    <suite id="shape" name="目标形态">
+      <case id="grouped">
+        <given>原 get/peek/set/batch 扁平挂在 runtime 顶层（逼近 runtime 容器放逻辑红线）</given>
+        <when>effect 成组</when>
+        <then>runtime 顶层 SHALL 无裸 get/peek/set/batch 方法；它们 SHALL 全部位于 `graph: GraphEffect` 子对象内</then>
+      </case>
+      <case id="group-name-graph">
+        <given>effect 组命名已拍板（2026-06-20）= `graph`</given>
+        <when>定义成组字段</when>
+        <then>effect 组字段名 SHALL 为 `graph`（节点逻辑写法 `rt.graph.get(x)`）</then>
+      </case>
+      <case id="behavior-preserved">
+        <given>get/set 仅迁移挂载位置</given>
+        <when>成组完成</when>
+        <then>图机制行为、调度语义 SHALL 不变（纯结构迁移、零行为变更）</then>
+      </case>
+    </suite>
+  </requirement>
+  <requirement id="instance-api-unchanged">
+    <statement>DataGraph **实例**自身的命令式 public API（`graph.get` / `graph.peek` / `graph.set` / `graph.batch`，外部驱动用）SHALL 不在本 reshape 内——reshape 只动注入节点逻辑的 ctx 回调。其方法名 SHALL 保持不变。</statement>
+    <suite id="boundary" name="实例 API 边界">
+      <case id="not-renamed">
+        <given>streamSignalStore.ts:141/:158/:190/:191 等处通过 DataGraph 实例直接调用 graph.peek/set/get</given>
+        <when>codemod 执行</when>
+        <then>这些实例 API 调用 SHALL 不被改动（区别于回调里的 ctx.get）</then>
+      </case>
+    </suite>
+  </requirement>
+  <requirement id="drop-actor-system">
+    <statement>dg core SHALL 移除自带 `ActorSystem`（删除 `packages/core/src/actor.ts`，并从 `index.ts` 移除 ActorSystem 及其相关 actor 类型导出，约 index.ts:46-55）。依据：dg 生产代码对自带 ActorSystem 零消费（仅 index 再导出 + test + demo，`packages/*/src` 零引用）；actor 真源归 depa-actor。需要 actor 的消费者 SHALL 改为直接依赖 depa-actor。</statement>
+    <suite id="removal" name="移除 ActorSystem">
+      <case id="file-removed">
+        <given>actor.ts 在生产代码零消费（仅自身定义 + index 再导出）</given>
+        <when>实施 REC-1</when>
+        <then>`packages/core/src/actor.ts` SHALL 被移除；index.ts SHALL 无 `ActorSystem` 及 actor 类型导出</then>
+      </case>
+      <case id="consumers-migrated-to-depa-actor">
+        <given>需要 actor 能力的消费者（如 demo）此前用 dg 自带 ActorSystem</given>
+        <when>删除后</when>
+        <then>这些消费者 SHALL 改用 depa-actor；删除后全栈仍 SHALL build + 测试绿</then>
+      </case>
+    </suite>
+  </requirement>
+  <requirement id="downstream-codemod">
+    <statement>本 track SHALL 提供一个 codemod，一次性把全部 in-repo 下游消费者的 ctx 回调 `ctx.get/peek/set/batch` 迁移为 `ctx.graph.*`（约 ~172 调用点 = dg 内 41 + 上层 131）。codemod SHALL 精确区分注入节点逻辑的 ctx 回调（改）与 DataGraph 实例命令式 API（不改）。</statement>
+    <suite id="consumers" name="下游消费者迁移">
+      <case id="dg-cell-mvi-core">
+        <given>dg-cell-mvi-core/src/streamSignalStore.ts:92 回调内 ctx.get</given>
+        <when>codemod 运行</when>
+        <then>该回调 ctx.get SHALL 迁移为 ctx.graph.get；同文件实例 graph.* 调用不变；package build + 测试 SHALL 绿</then>
+      </case>
+      <case id="bastard-ctx-set">
+        <given>bastard/src/flow-editor-layout/data-graph/coreGraphDepa.ts 重度 ctx.set（65 处）+ coreGraph.ts</given>
+        <when>codemod 运行</when>
+        <then>全部回调 ctx.get/set/peek/batch SHALL 迁移为 ctx.graph.*；bastard build + 测试 SHALL 绿</then>
+      </case>
+      <case id="bastard-dep-declaration">
+        <given>bastard 源码直接 import 'depa-data-graph-core'（coreGraphDepa.ts:14）但 package.json 未声明该依赖</given>
+        <when>codemod 一并修依赖卫生</when>
+        <then>bastard/package.json SHALL 补齐对 depa-data-graph(-core) 的显式依赖声明</then>
+      </case>
+      <case id="demo">
+        <given>dg examples/demo 自带消费 ctx.* + 自带 ActorSystem 用法</given>
+        <when>codemod 运行</when>
+        <then>demo 的 ctx.* SHALL 迁移为 ctx.graph.*；其 ActorSystem 用法 SHALL 改用 depa-actor；demo SHALL build 绿</then>
+      </case>
+    </suite>
+  </requirement>
+</behaviors>

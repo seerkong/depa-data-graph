@@ -9,7 +9,8 @@ export type {
   GraphEdge,
   GraphNode,
   GraphNodeIdLike,
-  GraphContext,
+  GraphRuntime,
+  GraphEffect,
   GraphSnapshot,
   GraphValidationError,
   AsyncProjectionIds,
@@ -42,17 +43,6 @@ export type {
   BuildGraphFromJsonOptions,
   CodeGraphBuilder,
 } from './graph-builders';
-
-export { ActorSystem } from './actor';
-export type {
-  ActorLogKind,
-  ActorEnvelope,
-  ActorLogEntry,
-  ActorHandler,
-  ActorRef,
-  ActorSelf,
-  ActorOptions,
-} from './actor';
 
 export { watch, untracked } from './watch';
 

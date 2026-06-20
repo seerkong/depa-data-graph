@@ -1,5 +1,5 @@
 import { DataGraph } from './graph';
-import type { GraphContext, GraphNode, NodeFlags, Setter } from './graph';
+import type { GraphRuntime, GraphNode, NodeFlags, Setter } from './graph';
 
 export type SignalSchema<T> = {
   kind: 'signal';
@@ -7,24 +7,24 @@ export type SignalSchema<T> = {
   flags?: NodeFlags;
 };
 
-export type ComputedSchema<T> = {
+export type ComputedSchema<T, TRuntime = unknown> = {
   kind: 'computed';
   deps: readonly string[];
-  getter: (ctx: GraphContext<any>, prev?: T) => T;
+  getter: (ctx: GraphRuntime<TRuntime>, prev?: T) => T;
   flags?: NodeFlags;
 };
 
-export type TypedGraphSchema = Record<string, SignalSchema<any> | ComputedSchema<any>>;
+export type TypedGraphSchema = Record<string, SignalSchema<any> | ComputedSchema<any, any>>;
 
 export function signal<T>(initial: T, flags?: NodeFlags): SignalSchema<T> {
   return { kind: 'signal', initial, flags };
 }
 
-export function computed<T>(
+export function computed<T, TRuntime = unknown>(
   deps: readonly string[],
-  getter: (ctx: GraphContext<any>, prev?: T) => T,
+  getter: (ctx: GraphRuntime<TRuntime>, prev?: T) => T,
   flags?: NodeFlags,
-): ComputedSchema<T> {
+): ComputedSchema<T, TRuntime> {
   return { kind: 'computed', deps, getter, flags };
 }
 
@@ -33,7 +33,7 @@ type SchemaIds<TSchema extends TypedGraphSchema> = keyof TSchema & string;
 type SchemaValue<TSchema extends TypedGraphSchema, TId extends SchemaIds<TSchema>> =
   TSchema[TId] extends SignalSchema<infer TValue>
     ? TValue
-    : TSchema[TId] extends ComputedSchema<infer TValue>
+    : TSchema[TId] extends ComputedSchema<infer TValue, any>
       ? TValue
       : never;
 
