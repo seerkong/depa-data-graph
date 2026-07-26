@@ -1,4 +1,4 @@
-import type { DataGraph, GraphNode, Setter } from './graph';
+import type { DataGraph, GraphNode, Setter, StateNodeOperationRecord } from './graph';
 
 export interface MiddlewareContext<TRuntime> {
   graph: DataGraph<TRuntime>;
@@ -21,6 +21,21 @@ export interface GraphMiddleware<TRuntime> {
     ctx: MiddlewareContext<TRuntime>,
   ) => Setter<T> | undefined;
   afterSet?: <T>(id: string, value: Setter<T>, ctx: MiddlewareContext<TRuntime>) => void;
+
+  beforeStateOperation?: (
+    operation: StateNodeOperationRecord,
+    ctx: MiddlewareContext<TRuntime>,
+  ) => void;
+  afterStateOperation?: (
+    operation: StateNodeOperationRecord,
+    result: unknown,
+    ctx: MiddlewareContext<TRuntime>,
+  ) => void;
+  onStateOperationError?: (
+    operation: StateNodeOperationRecord,
+    error: unknown,
+    ctx: MiddlewareContext<TRuntime>,
+  ) => void;
 
   // GraphNode is generic over value type; middleware sees it as unknown.
   // Use `any` here to avoid strict function variance issues on GraphNode.set.

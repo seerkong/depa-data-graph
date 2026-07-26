@@ -1,0 +1,197 @@
+<behaviors capability="unified-data-graph" version="1">
+  <requirement id="single-graph-topology">
+    <statement>系统 SHALL 使用唯一的 `DataGraph` 同时承载 Signal 与 Stream 节点，并显式支持 Signal→Signal、Signal→Stream、Stream→Signal、Stream→Stream；系统 MUST NOT 通过独立 `StreamGraph` 形成第二张图。</statement>
+    <suite id="topology" name="统一拓扑">
+      <case id="all-four-directions">
+        <given>图中存在 typed Signal 与 Stream refs</given>
+        <when>注册跨语义节点和边</when>
+        <then>四种输入输出方向 SHALL 可在同一 snapshot、验证器与生命周期内表达</then>
+      </case>
+      <case id="no-implicit-two-way-binding">
+        <given>Signal 与 Stream 支持两个方向的显式转换</given>
+        <when>只声明一个方向的节点</when>
+        <then>系统 MUST NOT 自动创建反向绑定或反向边</then>
+      </case>
+    </suite>
+  </requirement>
+  <requirement id="four-state-node-kinds">
+    <statement>系统 SHALL 提供 `SignalDrivenStateSignalNode`、`SignalDrivenStateStreamNode`、`StreamDrivenStateSignalNode`、`StreamDrivenStateStreamNode` 四类一等状态节点；它们 SHALL 具有 initial state、输入 transition、只读 `getState()`、typed mutations 与 typed actions，且 MUST NOT 暴露 `set`。</statement>
+    <suite id="matrix" name="状态节点矩阵">
+      <case id="signal-driven-signal-output">
+        <given>输入为 Signal 且输出为 Signal</given>
+        <when>声明状态节点</when>
+        <then>节点类型 SHALL 为 SignalDrivenStateSignalNode</then>
+      </case>
+      <case id="signal-driven-stream-output">
+        <given>输入为 Signal 且输出为 Stream</given>
+        <when>声明状态节点</when>
+        <then>节点类型 SHALL 为 SignalDrivenStateStreamNode</then>
+      </case>
+      <case id="stream-driven-signal-output">
+        <given>输入为 Stream 且输出为 Signal</given>
+        <when>声明状态节点</when>
+        <then>节点类型 SHALL 为 StreamDrivenStateSignalNode</then>
+      </case>
+      <case id="stream-driven-stream-output">
+        <given>输入为 Stream 且输出为 Stream</given>
+        <when>声明状态节点</when>
+        <then>节点类型 SHALL 为 StreamDrivenStateStreamNode</then>
+      </case>
+    </suite>
+  </requirement>
+  <requirement id="typed-mutations-actions">
+    <statement>mutation SHALL 由名称注册表与 typed payload 定义，保持同步、确定性、无 effect；action SHALL 由 `(rt) =&gt; registry` 工厂定义，可异步访问 `rt.bizRuntime`，但只能通过 typed `rt.mutations` 更新状态。业务调用 SHALL 使用 `node.mutations.xxx(...)` 与 `node.actions.xxx(...)`，不得手写注册表字符串或提交任意 state updater。</statement>
+    <suite id="state-updates" name="类型化状态更新">
+      <case id="mutation-payload-inference">
+        <given>mutation 定义含 typed payload</given>
+        <when>调用 node.mutations 对应方法</when>
+        <then>TypeScript SHALL 推断方法名、参数与返回调用形态</then>
+      </case>
+      <case id="action-through-mutation">
+        <given>action 需要异步加载并更新状态</given>
+        <when>action 完成或失败</when>
+        <then>所有状态变化 SHALL 通过 rt.mutations 发生</then>
+      </case>
+      <case id="no-public-set">
+        <given>调用者取得任一状态节点</given>
+        <when>检查公共类型</when>
+        <then>节点 MUST NOT 暴露 set 或任意 `(state) =&amp;gt; nextState` 更新入口</then>
+      </case>
+    </suite>
+  </requirement>
+  <requirement id="output-emission">
+    <statement>Signal 输出 SHALL 遵循 `Object.is` 去重；Stream 输出 SHALL 在每次成功输入或 mutation transition 后 emit nextState，即使 `Object.is(prev,next)` 为 true，并 SHALL 向新订阅者立即 replay 当前状态。</statement>
+    <suite id="emission" name="发布语义">
+      <case id="stream-same-state-emits">
+        <given>Stream-output 状态节点的 nextState 与 prev Object.is 相同</given>
+        <when>transition 成功</when>
+        <then>输出 Stream SHALL 仍 emit 一次</then>
+      </case>
+      <case id="stream-replays-current">
+        <given>状态节点已完成若干 transition</given>
+        <when>新订阅者订阅 Stream 输出</when>
+        <then>首个值 SHALL 与 getState() 当前值一致</then>
+      </case>
+      <case id="signal-same-state-dedup">
+        <given>Signal-output 状态节点的 nextState 与 prev Object.is 相同</given>
+        <when>transition 成功</when>
+        <then>Signal 下游 SHALL 不发生新的变更传播</then>
+      </case>
+    </suite>
+  </requirement>
+  <requirement id="lifecycle-feedback">
+    <statement>stream source/operator SHALL 默认 lazy，stream sink 与四类状态节点 SHALL 默认 eager。Signal/Stream 混合反馈环 MUST 默认被验证器拒绝，只有包含显式 feedback/delay/scheduler boundary 时才可成立。</statement>
+    <suite id="lifecycle" name="生命周期与反馈">
+      <case id="state-eager-without-output-subscriber">
+        <given>状态节点已注册但输出无人订阅</given>
+        <when>其输入产生值</when>
+        <then>节点 SHALL 继续消费并更新 getState()</then>
+      </case>
+      <case id="mixed-cycle-rejected">
+        <given>拓扑形成 Signal→Stream→Signal 或 Stream→Signal→Stream 环</given>
+        <when>没有显式 feedback boundary</when>
+        <then>图验证 SHALL 失败并报告环路</then>
+      </case>
+    </suite>
+  </requirement>
+  <requirement id="runtime-naming">
+    <statement>所有表示 `GraphRuntime` 或 action runtime 的回调参数 SHALL 命名为 `rt`；`makeCtx()` SHALL 改为 `makeRuntime()`。真正的 `MiddlewareContext` 等 context 对象 SHALL 保持 `ctx`，禁止机械改名。</statement>
+    <suite id="naming" name="runtime 命名边界">
+      <case id="graph-callbacks-use-rt">
+        <given>GraphRuntime 回调、builder、JSON registry、typed graph、测试、文档与 demo</given>
+        <when>迁移完成</when>
+        <then>代表 runtime 的形参 SHALL 使用 rt</then>
+      </case>
+      <case id="middleware-context-keeps-ctx">
+        <given>middleware 回调接收 MiddlewareContext</given>
+        <when>迁移完成</when>
+        <then>其真实 context 形参 MAY 且 SHOULD 保持 ctx</then>
+      </case>
+    </suite>
+  </requirement>
+  <requirement id="breaking-migration">
+    <statement>系统 SHALL 删除 `StreamGraph`、`GraphBridge`、`StreamBridgeManager`、`subscribeStreamToSignal`、`signalToStream`、`ReducerProjection`、`createReducerProjection` 公共 API，不保留兼容层；`AppendOnlyEventLog` SHALL 保留为 replayable event source，并通过新的 Stream-driven state node 完成 projection。</statement>
+    <suite id="migration" name="破坏性迁移">
+      <case id="old-api-removed">
+        <given>旧双图、桥接与 ReducerProjection API</given>
+        <when>迁移完成</when>
+        <then>源码导出、类型、测试、demo 与权威文档中 SHALL 无现役用法</then>
+      </case>
+      <case id="event-log-projection">
+        <given>AppendOnlyEventLog 含历史 entry 并继续接收实时 append</given>
+        <when>用 StreamDrivenStateSignalNode 或 StreamDrivenStateStreamNode 建 projection</when>
+        <then>历史 replay 与实时 entry SHALL 按 reducer 顺序更新状态</then>
+      </case>
+    </suite>
+  </requirement>
+  <requirement id="state-operation-boundaries">
+    <statement>普通可写 Signal SHALL 继续由 `graph.set` 服务；状态节点及其 output ref MUST NOT 接受 `set` 或任意 updater。状态节点 SHALL 区分 input reducer、typed mutation、typed action 与 typed dispatch：reducer/mutation 为纯同步 transition，action 只能经 mutation 写状态，dispatch 只接受由本节点 registry 推导的 operation union，不接受裸 state/updater。</statement>
+    <suite id="operation-api" name="状态操作边界">
+      <case id="plain-signal-set-remains">
+        <given>目标是普通可写 Signal Node</given>
+        <when>外部 driver 更新值</when>
+        <then>`graph.set` SHALL 保持可用</then>
+      </case>
+      <case id="state-output-cannot-set">
+        <given>目标是任一状态节点或其 output ref</given>
+        <when>调用者尝试 set/updater</when>
+        <then>公共类型 MUST 拒绝该调用</then>
+      </case>
+      <case id="typed-dispatch-only">
+        <given>调用者需要进入统一 operation 管线</given>
+        <when>调用 `node.dispatch`</when>
+        <then>参数 SHALL 是 `node.operations` 创建的 typed mutation/action operation，而不是字符串、任意对象或 next state</then>
+      </case>
+      <case id="facades-use-dispatch">
+        <given>调用 `.mutations.xxx()` 或 `.actions.xxx()`</given>
+        <when>操作执行</when>
+        <then>调用 SHALL 进入同一个可观察 dispatch 管线，并保持 name 与 typed payload</then>
+      </case>
+    </suite>
+  </requirement>
+  <requirement id="state-node-handle-runtime">
+    <statement>四类注册 API SHALL 返回拥有 typed `output` ref、`getState()`、`mutations`、`actions`、`operations`、`dispatch` 与 `dispose()` 的状态节点 handle。input reducer/mutation MUST NOT 接收 runtime；action factory SHALL 接收节点专用 `rt` capability view，包含 `bizRuntime`、`graph`、`getState`、typed `mutations` 与 typed `dispatch`。</statement>
+    <suite id="handle" name="Handle 与 runtime">
+      <case id="output-access">
+        <given>状态节点输出为 Signal 或 Stream</given>
+        <when>读取输出</when>
+        <then>调用者 SHALL 分别使用 `graph.get(node.output)` 或 `graph.stream(node.output)`</then>
+      </case>
+      <case id="reducer-is-pure">
+        <given>定义 input reducer 或 mutation</given>
+        <when>类型检查</when>
+        <then>签名 SHALL 只包含 state、input/payload，不包含 runtime</then>
+      </case>
+      <case id="action-runtime">
+        <given>定义 effectful action</given>
+        <when>action factory 接收 rt</when>
+        <then>rt SHALL 提供业务 runtime、graph effect、当前状态查询、typed mutations 与 dispatch，且 action 只能经 mutation 改状态</then>
+      </case>
+    </suite>
+  </requirement>
+  <requirement id="state-bootstrap-replay">
+    <statement>状态节点 SHALL 按 initial→eager activation→input bootstrap→live→dispose 生命周期运行。Signal-driven 节点 SHALL 在 bootstrap 处理输入 Signal 当前值；同步 replayable Stream source SHALL 在注册返回前按顺序归约历史输入。Stream-output 新订阅者 SHALL 只 replay 订阅时当前状态，而不是自动重放全部历史 transition。</statement>
+    <suite id="bootstrap" name="初始化与 replay">
+      <case id="signal-bootstrap">
+        <given>Signal input 已有当前值</given>
+        <when>注册 Signal-driven state node</when>
+        <then>注册返回后的 getState SHALL 已包含该当前值的一次 reducer transition</then>
+      </case>
+      <case id="event-log-bootstrap">
+        <given>AppendOnlyEventLog 已有有序历史 entries</given>
+        <when>注册 Stream-driven state node</when>
+        <then>同步注册返回后的 getState SHALL 是按历史顺序归约后的状态</then>
+      </case>
+      <case id="current-only-replay">
+        <given>Stream-output state node 已经历历史 transitions</given>
+        <when>新订阅者订阅</when>
+        <then>首个值 SHALL 是当前状态一次 replay，历史 transition 不自动逐条重放</then>
+      </case>
+      <case id="mutation-log-boundary">
+        <given>event-log projection 执行未写入日志的 mutation</given>
+        <when>节点被重新创建并 replay 日志</when>
+        <then>该 mutation MUST NOT 被恢复；需要持久化的修正 SHALL 建模为 log event</then>
+      </case>
+    </suite>
+  </requirement>
+</behaviors>

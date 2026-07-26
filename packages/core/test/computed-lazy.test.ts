@@ -14,9 +14,9 @@ describe('computed laziness', () => {
 
     let calls = 0;
 
-    graph.addComputed<number>('c', ['a'], (ctx) => {
+    graph.addComputed<number>('c', ['a'], (rt) => {
       calls += 1;
-      return ctx.graph.get<number>('a') * 2;
+      return rt.graph.get<number>('a') * 2;
     });
 
     expect(calls).toBe(0);

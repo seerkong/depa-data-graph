@@ -2,7 +2,14 @@ import { describe, expect, it } from 'vitest';
 
 import { buildGraphFromJson, createCodeGraphBuilder } from '../src/graph-builders';
 import { DataGraph } from '../src/graph';
-import { defineGraphModule, input, internal, mountGraph, output, state } from '../src/module-identity';
+import {
+  defineGraphModule,
+  input,
+  internal,
+  mountGraph,
+  output,
+  state,
+} from '../src/module-identity';
 
 describe('DataGraph ref-first API', () => {
   it('supports get/set/node with mounted refs', () => {
@@ -20,8 +27,8 @@ describe('DataGraph ref-first API', () => {
     );
 
     graph.addSignal(counterModule.state.count, 1);
-    graph.addComputed(counterModule.outputs.doubled, [counterModule.state.count], (ctx) => {
-      return ctx.graph.get(counterModule.state.count) * 2;
+    graph.addComputed(counterModule.outputs.doubled, [counterModule.state.count], (rt) => {
+      return rt.graph.get(counterModule.state.count) * 2;
     });
 
     expect(graph.get(counterModule.state.count)).toBe(1);
@@ -53,15 +60,15 @@ describe('DataGraph ref-first API', () => {
       .signal(stage.state.lexicalSeq, 0)
       .signal(stage.state.syntacticSeq, 0)
       .signal('legacy/count', 2)
-      .computed(stage.outputs.semanticSeq, [stage.state.lexicalSeq, 'legacy/count'], (ctx) => {
-        return ctx.graph.get(stage.state.lexicalSeq) + ctx.graph.get<number>('legacy/count');
+      .computed(stage.outputs.semanticSeq, [stage.state.lexicalSeq, 'legacy/count'], (rt) => {
+        return rt.graph.get(stage.state.lexicalSeq) + rt.graph.get<number>('legacy/count');
       })
       .processor(
         'processor/promote',
         [stage.outputs.semanticSeq],
         [stage.state.syntacticSeq],
-        (ctx) => {
-          ctx.graph.set(stage.state.syntacticSeq, ctx.graph.get(stage.outputs.semanticSeq));
+        (rt) => {
+          rt.graph.set(stage.state.syntacticSeq, rt.graph.get(stage.outputs.semanticSeq));
         },
       );
 
@@ -105,19 +112,32 @@ describe('DataGraph ref-first API', () => {
         version: 1,
         nodes: [
           { kind: 'signal', id: 'counter', initial: 2, flags: { in: true } },
-          { kind: 'computed', id: 'doubled', deps: ['counter'], logicKey: 'double', flags: { out: true } },
-          { kind: 'async', id: 'fetchUser', deps: ['counter'], initial: '', logicKey: 'fetchUser', flags: { out: true } },
+          {
+            kind: 'computed',
+            id: 'doubled',
+            deps: ['counter'],
+            logicKey: 'double',
+            flags: { out: true },
+          },
+          {
+            kind: 'async',
+            id: 'fetchUser',
+            deps: ['counter'],
+            initial: '',
+            logicKey: 'fetchUser',
+            flags: { out: true },
+          },
         ],
       },
       {
         computed: {
-          double: (ctx) => ctx.graph.get(generatedIdentity.state.counter) * 2,
+          double: (rt) => rt.graph.get(generatedIdentity.state.counter) * 2,
         },
         processor: {},
         consumer: {},
         async: {
           fetchUser: {
-            params: (ctx) => [ctx.graph.get(generatedIdentity.state.counter)],
+            params: (rt) => [rt.graph.get(generatedIdentity.state.counter)],
             task: async (counter) => `user-${counter}`,
           },
         },

@@ -50,4 +50,32 @@ describe('react adapter: useGraphSignal', () => {
     const viewIds = Object.keys(graph.snapshot().viewDeps);
     expect(viewIds.some((id) => id.startsWith('react:signal:a:'))).toBe(false);
   });
+
+  it('reads a state-node output ref while updates stay on the mutation facade', async () => {
+    const graph = new DataGraph<unknown>(() => ({}));
+    const input = graph.addSignal('input', 1);
+    const state = graph.addSignalDrivenStateSignalNode({
+      input: input.ref,
+      initial: 0,
+      reducer: (current, value) => current + value,
+      mutations: { add: (current, by: number) => current + by },
+    });
+    const seen: number[] = [];
+
+    function Comp() {
+      seen.push(useGraphSignal<number, unknown>(graph, state.output));
+      return null;
+    }
+
+    let renderer: ReturnType<typeof create>;
+    await act(async () => {
+      renderer = create(React.createElement(Comp));
+    });
+    state.mutations.add(2);
+    await act(tick);
+    expect(seen[seen.length - 1]).toBe(3);
+
+    await act(async () => renderer.unmount());
+    graph.dispose();
+  });
 });

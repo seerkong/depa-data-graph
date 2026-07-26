@@ -41,7 +41,7 @@ export function mountVueView(root: HTMLElement, runtime: DemoRuntime): void {
       });
 
       const onInput = (e: Event) => {
-        runtime.intents.setInput((e.target as HTMLInputElement).value);
+        runtime.stateNodes.controls.mutations.setInput((e.target as HTMLInputElement).value);
       };
 
       return () =>
@@ -83,21 +83,21 @@ export function mountVueView(root: HTMLElement, runtime: DemoRuntime): void {
             h(
               'button',
               {
-                onClick: () => runtime.intents.increase(1),
+                onClick: () => runtime.stateNodes.controls.mutations.increase(1),
               },
               '+1',
             ),
             h(
               'button',
               {
-                onClick: () => runtime.intents.increase(10),
+                onClick: () => runtime.stateNodes.controls.actions.increaseByRuntimeStep(),
               },
               '+10',
             ),
             h(
               'button',
               {
-                onClick: () => runtime.intents.submit(),
+                onClick: () => runtime.stateNodes.controls.actions.submit(),
               },
               'Submit',
             ),

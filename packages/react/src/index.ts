@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 
-import type { DataGraph, GraphNodeIdLike } from 'depa-data-graph-core';
+import type { DataGraph, SignalNodeIdLike } from 'depa-data-graph-core';
 import { toNodeId, watch } from 'depa-data-graph-core';
 
 let viewIdSeq = 0;
@@ -18,7 +18,7 @@ function useAlienSignalValue<T>(sig: () => T): T {
   );
 }
 
-export function useGraphSignal<T, TRuntime>(graph: DataGraph<TRuntime>, id: GraphNodeIdLike): T {
+export function useGraphSignal<T, TRuntime>(graph: DataGraph<TRuntime>, id: SignalNodeIdLike): T {
   const nodeId = toNodeId(id);
   const viewId = useMemo(() => nextViewId(`react:signal:${nodeId}:`), [graph, nodeId]);
 

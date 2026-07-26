@@ -38,7 +38,7 @@ export function createSchemaTypedGraphExample() {
   const graph = createTypedGraph(
     {
       counter: signal(0),
-      doubled: computed(['counter'], (ctx) => ctx.graph.get<number>('counter') * 2),
+      doubled: computed(['counter'], (rt) => rt.graph.get<number>('counter') * 2),
     } as const,
     () => runtime,
   );

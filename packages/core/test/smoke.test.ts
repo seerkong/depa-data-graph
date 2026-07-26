@@ -7,7 +7,7 @@ describe('DataGraph (smoke)', () => {
     const graph = new DataGraph(() => ({}));
 
     graph.addSignal('a', 1);
-    graph.addComputed('b', ['a'], (ctx) => ctx.graph.get<number>('a') * 2);
+    graph.addComputed('b', ['a'], (rt) => rt.graph.get<number>('a') * 2);
 
     expect(graph.get<number>('b')).toBe(2);
 

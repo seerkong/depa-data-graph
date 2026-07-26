@@ -1,10 +1,13 @@
 import { onScopeDispose, shallowRef } from 'vue';
 import type { Ref } from 'vue';
 
-import type { DataGraph, GraphNodeIdLike } from 'depa-data-graph-core';
+import type { DataGraph, SignalNodeIdLike } from 'depa-data-graph-core';
 import { watch } from 'depa-data-graph-core';
 
-export function useGraphSignal<T, TRuntime>(graph: DataGraph<TRuntime>, id: GraphNodeIdLike): Ref<T> {
+export function useGraphSignal<T, TRuntime>(
+  graph: DataGraph<TRuntime>,
+  id: SignalNodeIdLike,
+): Ref<T> {
   const state = shallowRef<T>(graph.get<T>(id)) as Ref<T>;
 
   const stop = watch(

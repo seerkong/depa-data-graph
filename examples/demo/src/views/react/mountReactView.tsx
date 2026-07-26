@@ -38,7 +38,10 @@ function ReactPanel(props: { runtime: DemoRuntime }) {
   );
 
   const sg = runtime.subgraphs.react!;
-  const subLabel = useGraphSignal<string, DemoRuntime>(sg, getActorSubgraphRefs('react').outputs.label);
+  const subLabel = useGraphSignal<string, DemoRuntime>(
+    sg,
+    getActorSubgraphRefs('react').outputs.label,
+  );
 
   return (
     <div className="list">
@@ -79,16 +82,18 @@ function ReactPanel(props: { runtime: DemoRuntime }) {
           <input
             type="text"
             value={helloInput}
-            onChange={(e) => runtime.intents.setInput(e.currentTarget.value)}
+            onChange={(e) => runtime.stateNodes.controls.mutations.setInput(e.currentTarget.value)}
           />
           {helloError ? <div className="small">{helloError}</div> : null}
         </div>
       </div>
 
       <div className="row">
-        <button onClick={() => runtime.intents.increase(1)}>+1</button>
-        <button onClick={() => runtime.intents.increase(10)}>+10</button>
-        <button onClick={() => runtime.intents.submit()}>Submit</button>
+        <button onClick={() => runtime.stateNodes.controls.mutations.increase(1)}>+1</button>
+        <button onClick={() => runtime.stateNodes.controls.actions.increaseByRuntimeStep()}>
+          +10
+        </button>
+        <button onClick={() => runtime.stateNodes.controls.actions.submit()}>Submit</button>
       </div>
     </div>
   );

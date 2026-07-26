@@ -51,9 +51,9 @@ export function createActorSubgraph(
     .computed(
       refs.outputs.plusOffset,
       [refs.inputs.mainPlus300, refs.state.offset],
-      (ctx) => {
-        const v = ctx.graph.get(refs.inputs.mainPlus300);
-        const k = ctx.graph.get(refs.state.offset);
+      (rt) => {
+        const v = rt.graph.get(refs.inputs.mainPlus300);
+        const k = rt.graph.get(refs.state.offset);
         return v + k;
       },
       { out: true, computed: true },
@@ -61,9 +61,9 @@ export function createActorSubgraph(
     .computed(
       refs.outputs.sumMain,
       [refs.inputs.mainPlus300, refs.inputs.mainTimes10],
-      (ctx) => {
-        const mainPlus300 = ctx.graph.get(refs.inputs.mainPlus300);
-        const mainTimes10 = ctx.graph.get(refs.inputs.mainTimes10);
+      (rt) => {
+        const mainPlus300 = rt.graph.get(refs.inputs.mainPlus300);
+        const mainTimes10 = rt.graph.get(refs.inputs.mainTimes10);
         return mainPlus300 + mainTimes10;
       },
       { out: true, computed: true },
@@ -73,10 +73,13 @@ export function createActorSubgraph(
       refs.internals.makeLabel,
       [refs.outputs.plusOffset, refs.outputs.sumMain],
       [refs.outputs.label],
-      (ctx) => {
-        const plusOffset = ctx.graph.get(refs.outputs.plusOffset);
-        const sum = ctx.graph.get(refs.outputs.sumMain);
-        ctx.graph.set(refs.outputs.label, `${actorId} subgraph: plusOffset=${plusOffset}, sumMain=${sum}`);
+      (rt) => {
+        const plusOffset = rt.graph.get(refs.outputs.plusOffset);
+        const sum = rt.graph.get(refs.outputs.sumMain);
+        rt.graph.set(
+          refs.outputs.label,
+          `${actorId} subgraph: plusOffset=${plusOffset}, sumMain=${sum}`,
+        );
       },
       { computed: true },
     );

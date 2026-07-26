@@ -29,4 +29,24 @@ describe('vue adapter: useGraphSignal', () => {
     await tick();
     expect(state.value).toBe(1);
   });
+
+  it('reads a state-node output ref updated through a mutation', async () => {
+    const graph = new DataGraph<unknown>(() => ({}));
+    const input = graph.addSignal('input', 1);
+    const state = graph.addSignalDrivenStateSignalNode({
+      input: input.ref,
+      initial: 0,
+      reducer: (current, value) => current + value,
+      mutations: { add: (current, by: number) => current + by },
+    });
+    const scope = effectScope();
+    const value = scope.run(() => useGraphSignal<number, unknown>(graph, state.output))!;
+
+    state.mutations.add(2);
+    await tick();
+    expect(value.value).toBe(3);
+
+    scope.stop();
+    graph.dispose();
+  });
 });

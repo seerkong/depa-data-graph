@@ -1,422 +1,194 @@
-# DataGraph
+# Unified DataGraph
 
-The `DataGraph` class is the core abstraction for explicit, inspectable state management.
+DataGraph is one typed dependency graph containing signal computation, stream
+processing, effects, and stateful projections. “Unified” means these node kinds
+share refs, dependency validation, lifecycle, snapshots, and runtime ownership;
+it does not erase the semantic difference between current values and events.
 
-**Source**: `packages/core/src/graph.ts`
+## Complete topology
 
-## Overview
+```text
+Signal world                                      Stream world
+────────────                                      ────────────
+Writable Signal ──► Computed ──► Processor        Source ──► Operator ──► Sink
+      │                │             │                │          │          │
+      └────────────────┴─────────────┴──── explicit conversions ─┴──────────┘
+                                           │                  │
+                         SignalDrivenStateSignalNode ◄── Signal
+                         SignalDrivenStateStreamNode ◄── Signal
+                         StreamDrivenStateSignalNode ◄── Stream
+                         StreamDrivenStateStreamNode ◄── Stream
+                                           │
+                            output is Signal or Stream as named
 
-```typescript
-class DataGraph<TRuntime> {
-  // Node management
-  addSignal<T>(id: string, initialValue: T, flags?: NodeFlags): GraphNode<T>;
-  addComputed<T>(
-    id: string,
-    deps: string[],
-    getter: (ctx, prev?) => T,
-    flags?: NodeFlags,
-  ): GraphNode<T>;
-  addProcessor(
-    id: string,
-    deps: string[],
-    outputs: string[],
-    run: (ctx) => void,
-    flags?: NodeFlags,
-  ): GraphNode;
-  addConsumer(id: string, deps: string[], run: (ctx) => void, flags?: NodeFlags): GraphNode;
-  addAsync<TArgs, TResult>(
-    id: string,
-    deps: string[],
-    config: AsyncConfig,
-    flags?: NodeFlags,
-  ): GraphNode;
-
-  // Value access
-  get<T>(id: string): T; // Read with tracking
-  peek<T>(id: string): T; // Read without tracking
-  set<T>(id: string, value: Setter<T>): void;
-
-  // Utilities
-  use(middleware: GraphMiddleware<TRuntime>): this;
-  batch<T>(fn: () => T): T; // Atomic updates
-  untracked<T>(fn: () => T): T; // Suspend dependency tracking
-  validate(): GraphValidationError[]; // Structural validation
-  snapshot(): GraphSnapshot; // Full graph state
-  revision(): () => number; // Reactive revision counter
-
-  // Lifecycle
-  addCleanup(stop: StopHandle): void;
-  dispose(): void;
-}
+Consumer nodes observe values/effects at the graph boundary.
 ```
 
-## Node Types
+The canonical taxonomy is:
 
-### Signal
+- `Signal`: a current value; writable Signals are set through `graph.set`.
+- `Computed`: a pure derived current value.
+- `Processor`: explicit processing/effect logic over graph inputs.
+- `Consumer`: a terminal observer or external side-effect boundary.
+- Stream `Source`: produces ordered events, including `AppendOnlyEventLog`.
+- Stream `Operator`: transforms, filters, combines, or schedules streams.
+- Stream `Sink`: consumes stream events at an external boundary.
+- `SignalDrivenStateSignalNode`: a Signal drives state; output is a Signal.
+- `SignalDrivenStateStreamNode`: a Signal drives state; output is a Stream.
+- `StreamDrivenStateSignalNode`: a Stream drives state; output is a Signal.
+- `StreamDrivenStateStreamNode`: a Stream drives state; output is a Stream.
 
-Basic reactive state container. Readable and writable.
+## Explicit Signal/Stream conversions
 
-```typescript
-graph.addSignal('counter', 1, { in: true, out: true });
+Signal and Stream edges are not interchangeable. Both directions require an
+explicit node or adapter because they answer different questions:
 
-// Read
-const value = graph.get<number>('counter');
-
-// Write
-graph.set<number>('counter', 5);
-graph.set<number>('counter', (prev) => prev + 1);
+```text
+Signal ── current/change adapter ──► Stream
+Stream ── reducer/latest adapter ──► Signal
 ```
 
-**Characteristics**:
+Signal-to-Stream conversion defines whether subscription emits the current
+value and how later equality-filtered changes appear. Stream-to-Signal
+conversion must define an initial value and a reduction/latest-value policy.
+The four state-node builders are specialized, named forms of these stateful
+boundaries, not invisible coercions.
 
-- Stores a single value
-- Triggers dependents when value changes (using `Object.is` equality)
-- Can be read and written from anywhere
+## Typed refs
 
-### Computed
+A ref identifies one registered graph output and carries its protocol and value
+type. The target shape is conceptually:
 
-Derived value from other nodes. Read-only.
+```ts
+type SignalNodeRef<T, Writable extends boolean = false> = {
+  readonly id: NodeId;
+  readonly protocol: 'signal';
+  readonly value: T;
+  readonly writable: Writable;
+};
 
-```typescript
-graph.addComputed(
-  'doubled',
-  ['counter'],
-  (ctx) => {
-    return ctx.get<number>('counter') * 2;
-  },
-  { out: true },
-);
-```
-
-**Note**: The `computed: true` flag is automatically added by `addComputed()`. You don't need to specify it manually.
-
-**Characteristics**:
-
-- Lazily evaluated (only when read)
-- Recomputes on next read when dependencies change
-- Caches result until dependencies change
-- Receives `prev` parameter for incremental computation
-
-### Processor
-
-Side-effect node that writes to multiple outputs.
-
-```typescript
-graph.addProcessor(
-  'processor/counterDerived',
-  ['counter'], // deps
-  ['counter/isEven', 'counter/label'], // outputs
-  (ctx) => {
-    const c = ctx.get<number>('counter');
-    ctx.set<boolean>('counter/isEven', c % 2 === 0);
-    ctx.set<string>('counter/label', c % 2 === 0 ? 'even' : 'odd');
-  },
-  { computed: true },
-);
-```
-
-**Characteristics**:
-
-- Runs when any dependency changes
-- Can write to multiple output signals
-- Outputs must be pre-declared
-- Runs inside `batch()` automatically
-
-**Use cases**:
-
-- Deriving multiple related values from one source
-- Validation (input → error message)
-- Normalization (raw input → cleaned value)
-
-### Async
-
-Asynchronous computation with built-in loading/error state.
-
-```typescript
-graph.addAsync<[number], number>(
-  'asyncPlus100',
-  ['counter'],
-  {
-    initial: 0,
-    params: (ctx) => [ctx.get<number>('counter')],
-    task: async (value) => {
-      await delay(350);
-      return value + 100;
-    },
-  },
-  { out: true, computed: true },
-);
-```
-
-**Auto-created child signals**:
-
-- `asyncPlus100/result` - resolved value (type: `TResult`)
-- `asyncPlus100/loading` - boolean loading state
-- `asyncPlus100/error` - error message or `null`
-
-**Characteristics**:
-
-- Re-triggers when dependencies change
-- Cancels stale requests (only latest result is applied)
-- Standardized loading/error handling
-
-### Consumer
-
-Side-effect node that only consumes data without producing new graph nodes.
-
-```typescript
-graph.addConsumer('consumer/logCounter', ['counter'], (ctx) => {
-  const counter = ctx.get<number>('counter');
-  console.log(`[Consumer] counter changed to: ${counter}`);
-});
-```
-
-**Characteristics**:
-
-- Runs when any dependency changes
-- Does NOT write to any output signals (unlike Processor)
-- Does NOT produce a readable value (unlike Computed)
-- Used for side effects: logging, analytics, external API calls
-
-**Use cases**:
-
-- Logging state changes
-- Sending analytics events
-- Syncing to external systems (localStorage, server)
-- Triggering notifications
-
-**Comparison with Processor**:
-
-| Aspect          | Processor                         | Consumer                   |
-| --------------- | --------------------------------- | -------------------------- |
-| Outputs         | Writes to declared output signals | No outputs                 |
-| Purpose         | Transform data within graph       | Side effects outside graph |
-| `outputs` param | Required                          | Not applicable             |
-
-## Node Flags
-
-```typescript
-type NodeFlags = {
-  in?: boolean; // Input node (user-writable)
-  out?: boolean; // Output node (view-readable)
-  computed?: boolean; // Derived value
-  restriction?: boolean; // Access restriction marker
-  validation?: boolean; // Validation-related node
+type StreamNodeRef<T> = {
+  readonly id: NodeId;
+  readonly protocol: 'stream';
+  readonly value: T;
 };
 ```
 
-Flags are metadata for tooling and documentation. They don't affect runtime behavior.
+The phantom `value` fields above illustrate type relationships; runtime objects
+need not contain actual values. State-node output refs are always read-only.
+`graph.get` accepts a Signal ref, `graph.stream` accepts a Stream ref, and
+`graph.set` accepts only an ordinary writable Signal ref.
 
-## Graph Context
+Builders return handles when callers need behavior beyond reading an output.
+Accordingly, every `add*State*Node` returns `StateNodeHandle`, with the graph ref
+available as `handle.output`.
 
-All node computations receive a `GraphContext`:
+## Typed edges
 
-```typescript
-interface GraphContext<TRuntime> {
-  runtime: TRuntime; // Application runtime
-  get<T>(id: string): T; // Read with tracking
-  peek<T>(id: string): T; // Read without tracking
-  set<T>(id: string, value: Setter<T>): void; // Write
-  batch<T>(fn: () => T): T; // Atomic updates
-}
-```
-
-**Example**:
-
-```typescript
-graph.addComputed('greeting', ['hello/name'], (ctx) => {
-  const name = ctx.get<string>('hello/name');
-  return `Hello, ${name}!`;
-});
-```
-
-## Edges
-
-The graph tracks three types of edges:
-
-| Edge Kind   | Meaning                    | Example                    |
-| ----------- | -------------------------- | -------------------------- |
-| `dependsOn` | Node reads from another    | `doubled` → `counter`      |
-| `writesTo`  | Processor writes to output | `processor/x` → `x/result` |
-| `viewReads` | View model reads from node | `view:vanilla` → `counter` |
-
-Edges are derived from declared `deps` and `outputs`, not runtime tracking.
-
-## Snapshot
-
-Get the full graph state at any moment:
-
-```typescript
-const snap = graph.snapshot();
-
-// snap.revision - monotonic counter
-// snap.nodes - array of node states
-// snap.edges - array of edges
-// snap.viewDeps - view → node dependencies
-```
-
-**Node snapshot**:
-
-```typescript
-{
-  id: 'counter',
-  kind: 'signal',
-  flags: { in: true, out: true },
-  deps: [],
-  outputs: [],
-  version: 5,        // How many times value changed
-  updatedAt: 1705..., // Last update timestamp
-  value: 42          // Current value (untracked read)
-}
-```
-
-## Validation
-
-Validate the graph structure (without executing node logic):
-
-```typescript
-const errors = graph.validate();
-if (errors.length) {
-  console.warn(errors);
-}
-```
-
-**Checks include**:
-
-- Missing `deps` targets
-- Missing `outputs` targets
-- Outputs that exist but are not writable
-- View model deps pointing to missing nodes
-- Cycles in declared deps
-
-Each entry is a structured `GraphValidationError` with fields like:
-
-- `kind` (e.g. `missingDep`, `outputNotWritable`, `cycle`)
-- `from`, `to` (or `path` for cycles)
-- `message` and optional `suggestion`
-
-## Revision Tracking
-
-The graph maintains a reactive revision counter:
-
-```typescript
-const revision$ = graph.revision();
-
-effect(() => {
-  console.log('Graph changed, revision:', revision$());
-});
-```
-
-Revision increments on:
-
-- Node added
-- Node value changed
-- View dependencies changed
-
-## View Model Signals
-
-Create a reactive signal that tracks which nodes a view reads:
-
-```typescript
-const viewModel$ = graph.createViewModelSignal('view:vanilla', () => ({
-  counter: graph.get<number>('counter'),
-  label: graph.get<string>('counter/label'),
-}));
-
-// viewModel$ is a signal that updates when counter or label changes
-// graph.snapshot().viewDeps['view:vanilla'] = ['counter', 'counter/label']
-```
-
-This enables:
-
-- Fine-grained view updates
-- Dependency visualization in tooling
-
-## Middleware / Plugins
-
-The graph supports registering middleware for cross-cutting concerns (logging, validation, persistence, metrics):
+An edge connects a producer output port to a compatible consumer input port:
 
 ```ts
-import type { GraphMiddleware } from 'depa-data-graph-core';
-
-graph.use({
-  name: 'my-middleware',
-  beforeSet: (id, value) => {
-    // return `undefined` to block a write
-    return value;
-  },
-  afterSet: (id) => {
-    console.log('updated', id);
-  },
-});
+type GraphEdge<From extends GraphNodeRef, To extends InputPort> = {
+  readonly from: From;
+  readonly to: To;
+  readonly mode: EdgeModeFor<From, To>;
+};
 ```
 
-Middleware hooks are invoked at well-defined points:
+Validation must reject protocol mismatches, value-type mismatches visible to
+the type system, missing nodes/ports, illegal ownership crossings, and mixed
+cycles that lack an explicit `feedback`, `delay`, or `scheduler` boundary.
+State-node presence alone does not legalize a mixed cycle. Conversion nodes make
+a protocol change visible in the topology and snapshot.
 
-- `beforeGet` / `afterGet`
-- `beforeSet` / `afterSet`
-- `onNodeAdd`
-- `onBatch`
-- `onDispose`
+## Snapshot target shape
 
-Built-in plugins are provided as middleware helpers:
+Snapshots describe definitions, topology, and inspectable lifecycle state, but
+not hidden closures or runtime objects. The target is structurally equivalent
+to:
 
-- `loggerPlugin()`
-- `persistPlugin()`
-- `validationPlugin()`
-
-## Batching
-
-Group multiple writes into a single update:
-
-```typescript
-graph.batch(() => {
-  graph.set('counter', 10);
-  graph.set('hello/input', 'test');
-  // Dependents only recalculate once, after batch completes
-});
+```ts
+interface DataGraphSnapshot {
+  readonly version: 1;
+  readonly nodes: readonly {
+    readonly id: string;
+    readonly kind: GraphNodeKind;
+    readonly outputSemantic: 'signal' | 'stream';
+    readonly inputs: readonly PortSnapshot[];
+    readonly outputs: readonly PortSnapshot[];
+    readonly lifecycle: 'inactive' | 'active' | 'disposed';
+    readonly state?: unknown;
+    readonly stream?: {
+      readonly started: boolean;
+      readonly subscriberCount: number;
+    };
+  }[];
+  readonly edges: readonly {
+    readonly from: PortAddress;
+    readonly to: PortAddress;
+    readonly mode: 'signal' | 'stream' | 'explicit-conversion';
+    readonly boundary?: 'feedback' | 'delay' | 'scheduler';
+  }[];
+}
 ```
 
-## Untracked Reads
+State-node snapshots identify node kind, output protocol, operation names,
+input refs, eligible current state, and Stream start/subscriber information.
+They must not serialize action closures, runtime objects, subscriber callbacks,
+middleware contexts, or claim that a Stream-output node contains transition
+history.
 
-Read values without creating dependencies:
+## Feedback boundary
 
-```typescript
-graph.addComputed('example', ['a'], (ctx) => {
-  const a = ctx.get<number>('a'); // Tracked
-  const b = ctx.peek<number>('b'); // Not tracked
-  return a + b;
-});
-// Only re-runs when 'a' changes, not when 'b' changes
+Combinational Signal/Computed dependencies must remain acyclic. Stream/operator
+loops must likewise be rejected when they can synchronously feed an emission
+back into itself. Feedback is legal only when an explicit feedback, delay, or
+scheduler boundary defines turn ordering, queuing, cancellation, and disposal.
+A state node owns state, but does not automatically count as that explicit
+mixed-protocol boundary.
+
+Legal feedback:
+
+```text
+commands Stream ──► StreamDrivenStateSignalNode(initial = 0) ──► state Signal
+       ▲                                                            │
+       └── explicit scheduler/delay boundary ◄── Signal→Stream adapter
 ```
 
-## Lifecycle
+The state node provides an initial value, while the explicit scheduler/delay
+boundary creates the next delivery turn. The conversion and boundary are both
+visible, so validation and snapshots can explain why the loop is legal.
 
-```typescript
-// Add cleanup handlers
-graph.addCleanup(() => {
-  console.log('Cleaning up...');
-});
+Illegal feedback:
 
-// Dispose all effects and cleanup handlers
-graph.dispose();
+```text
+Computed A ──► Computed B ──► Computed A
 ```
 
-## Internal Implementation
+Neither node owns state or defines an initial value, so evaluation has no valid
+starting point.
 
-The `DataGraph` wraps `alien-signals` primitives:
+Also illegal:
 
-| DataGraph                | alien-signals                 |
-| ------------------------ | ----------------------------- |
-| Signal node              | `signal()`                    |
-| Computed node            | `computed()`                  |
-| Processor/Async/Consumer | `effect()`                    |
-| `batch()`                | `startBatch()` / `endBatch()` |
-| `untracked()`            | `setActiveSub(undefined)`     |
+```text
+Stream operator A ──► operator B ──► operator A
+```
 
-The wrapper adds:
+Without a declared delay/state boundary, one input can recurse indefinitely in
+the same delivery turn. Hiding either loop inside a bridge, module, or subgraph
+does not make it legal; validation follows typed exported ports and edges.
 
-- Explicit dependency declaration
-- Node metadata (id, kind, flags)
-- Snapshot capability
-- View dependency tracking
+## Runtime and ownership
+
+The DataGraph runtime owns registration-time activation, reads, ordinary Signal
+writes, Stream access, snapshots, and disposal. A `StateNodeActionRuntime` is a
+node-scoped capability view containing `bizRuntime`, `graph: GraphEffect`,
+`getState`, typed mutations, and typed dispatch. Reducers do not receive either
+runtime view.
+
+Modules, subgraphs, and adapters can package nodes but must preserve ref
+protocols and ownership. They cannot turn a state-node output into a writable
+Signal or hide an implicit Signal/Stream conversion.
+
+See [State Nodes](./state-nodes.md), [State Operations](./state-operations.md),
+and [Stream Lifecycle](./stream-lifecycle.md) for the operational contracts.

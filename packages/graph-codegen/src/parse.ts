@@ -86,6 +86,27 @@ export function parseJsonGraphSpecV1(value: unknown): JsonGraphSpecV1 {
       continue;
     }
 
+    if (
+      kind === 'signalDrivenStateSignal' ||
+      kind === 'signalDrivenStateStream' ||
+      kind === 'streamDrivenStateSignal' ||
+      kind === 'streamDrivenStateStream'
+    ) {
+      if (typeof node.input !== 'string') {
+        throw new Error(`Invalid state node '${id}': input must be string`);
+      }
+      if (typeof node.reducerKey !== 'string') {
+        throw new Error(`Invalid state node '${id}': reducerKey must be string`);
+      }
+      if (node.mutationsKey !== undefined && typeof node.mutationsKey !== 'string') {
+        throw new Error(`Invalid state node '${id}': mutationsKey must be string`);
+      }
+      if (node.actionsKey !== undefined && typeof node.actionsKey !== 'string') {
+        throw new Error(`Invalid state node '${id}': actionsKey must be string`);
+      }
+      continue;
+    }
+
     throw new Error(`Invalid graph spec: unknown node kind '${kind}'`);
   }
 

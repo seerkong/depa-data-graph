@@ -1,224 +1,69 @@
 # Architecture Overview
 
-## Design Goals
+The project provides a unified, typed DataGraph for current values, event
+streams, stateful projections, and effects. The architecture keeps data
+protocols explicit: Signals answer “what is the current value?”, Streams answer
+“what happened in order?”, and state nodes answer “which named transitions may
+change this owned state?”.
 
-1. **Framework-Agnostic Core**: State management logic lives outside any UI framework
-2. **Explicit Data Graph**: Dependencies are declared, not inferred at runtime
-3. **Inspectable State**: Full graph structure and values available via `snapshot()`
-4. **Cross-Framework Communication**: Actor-based messaging between isolated framework views
-5. **Multiple Construction Modes**: JSON DSL, Code DSL, and Imperative API for flexibility
-6. **MVI Pattern**: Unidirectional data flow with named intents
-7. **Extensible Core**: Middleware/plugin hooks for cross-cutting concerns (logging, validation, persistence)
-8. **Streaming Support**: Stream factories with lifecycle hooks (WebSocket/SSE)
+## System map
 
-## Why alien-signals?
-
-[alien-signals](https://github.com/nicksrandall/alien-signals) provides:
-
-- **Minimal API**: `signal()`, `computed()`, `effect()`
-- **No framework coupling**: Pure JavaScript, works anywhere
-- **Batching**: `startBatch()` / `endBatch()` for atomic updates
-- **Untracked reads**: `setActiveSub(undefined)` to read without tracking
-
-This makes it ideal as the reactive primitive layer beneath our explicit graph abstraction.
-
-## Architecture Layers
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        Views                                 │
-│   ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐       │
-│   │ Vanilla  │ │   Vue    │ │  React   │ │  Solid   │       │
-│   └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘       │
-│        │            │            │            │              │
-│        └────────────┴─────┬──────┴────────────┘              │
-│                           │                                  │
-├───────────────────────────┼──────────────────────────────────┤
-│                   Framework Adapters                          │
-│     @.../vanilla | @.../vue | @.../react | @.../solid         │
-│          (hooks/bindings that subscribe to DataGraph)         │
-├───────────────────────────┼──────────────────────────────────┤
-│                     Actor System                             │
-│              (cross-framework messaging)                     │
-├───────────────────────────┼──────────────────────────────────┤
-│                           │                                  │
-│   ┌───────────────────────┴───────────────────────┐         │
-│   │                  DemoRuntime                   │         │
-│   │  ┌─────────────────────────────────────────┐  │         │
-│   │  │              Main Graph                  │  │         │
-│   │  │  (signals, computed, processors, async) │  │         │
-│   │  └─────────────────────────────────────────┘  │         │
-│   │                      │                        │         │
-│   │         ┌────────────┼────────────┐          │         │
-│   │         ▼            ▼            ▼          │         │
-│   │   ┌──────────┐ ┌──────────┐ ┌──────────┐    │         │
-│   │   │ Subgraph │ │ Subgraph │ │ Subgraph │    │         │
-│   │   │ (vanilla)│ │  (vue)   │ │ (react)  │... │         │
-│   │   └──────────┘ └──────────┘ └──────────┘    │         │
-│   │                                              │         │
-│   │  ┌─────────────────────────────────────────┐ │         │
-│   │  │               Intents                    │ │         │
-│   │  │  increase() | setInput() | submit()     │ │         │
-│   │  └─────────────────────────────────────────┘ │         │
-│   └──────────────────────────────────────────────┘         │
-│                                                             │
-├─────────────────────────────────────────────────────────────┤
-│                     Framework Core                          │
-│   ┌──────────────┐ ┌──────────────┐ ┌──────────────┐       │
-│   │  DataGraph   │ │ GraphBuilders│ │ ActorSystem  │       │
-│   │ (middleware)  │                 │ (typed messages)│      │
-│   └──────────────┘ └──────────────┘ └──────────────┘       │
-│   ┌──────────────────────────────────────────────────────┐  │
-│   │ Streams (xstream) + lifecycle hooks (WS/SSE/Fetch/AI) │  │
-│   └──────────────────────────────────────────────────────┘  │
-├─────────────────────────────────────────────────────────────┤
-│                    alien-signals                            │
-│         signal() | computed() | effect() | batch()         │
-└─────────────────────────────────────────────────────────────┘
+```text
+                    ┌──────────── Unified DataGraph ────────────┐
+ordinary input ───► Signal ─► Computed ─► Processor ─► Consumer│
+                       │             explicit adapters          │
+external events ───► Source ─► Operator ─► Sink                 │
+                       │                                        │
+Signal input ──────────► SignalDrivenStateSignalNode ─► Signal │
+Signal input ──────────► SignalDrivenStateStreamNode ─► Stream │
+Stream input ──────────► StreamDrivenStateSignalNode ─► Signal │
+Stream input ──────────► StreamDrivenStateStreamNode ─► Stream │
+                    └───────────────────────────────────────────┘
 ```
 
-## Data Flow
+Signal/Stream conversion is always explicit in both directions. A node builder
+returns typed refs for passive graph values, or a handle when it also exposes an
+operation/lifecycle API. In particular, all state-node builders return a
+`StateNodeHandle`, and callers read or subscribe through `handle.output`.
 
-```
-User clicks "Increase" button in Vue panel
-                │
-                ▼
-        intents.increase(1)
-                │
-                ▼
-    graph.set('counter', v => v + 1)
-                │
-                ▼
-    ┌───────────┴───────────┐
-    │   Reactive propagation │
-    │   (alien-signals)      │
-    └───────────┬───────────┘
-                │
-    ┌───────────┼───────────┬───────────┐
-    ▼           ▼           ▼           ▼
- plus100    processor   asyncPlus100  subgraph
- computed   runs        triggers      bridges
-    │           │           │           │
-    ▼           ▼           ▼           ▼
- plus300    isEven,     async         subgraph
- computed   label       result        computed
-    │                                   │
-    └───────────────┬───────────────────┘
-                    ▼
-            Views re-render
-    (Vanilla, Vue, React, Solid)
-```
+## Governing boundaries
 
-## Key Design Decisions
+- `graph.set(ref, value)` changes only an ordinary writable Signal.
+- State-node outputs are read-only; state changes through typed mutations or
+  actions, both of which delegate to public typed `node.dispatch`.
+- Reducers and mutations are pure and receive no runtime.
+- Action factories receive `StateNodeActionRuntime`, a scoped capability linked
+  to the owning `GraphRuntime`.
+- Stream-output state nodes replay one current state to a new subscriber, not a
+  history of transitions.
+- `AppendOnlyEventLog` is an ordered, replayable Stream source. Stream-driven
+  state nodes may synchronously reduce its existing history during bootstrap,
+  but do not become logs themselves.
+- Feedback requires an explicit feedback, delay, or scheduler boundary. A state
+  node by itself does not implicitly legalize a mixed Signal/Stream cycle.
 
-### 1. Explicit vs Implicit Dependencies
+## Lifecycle
 
-**Traditional (implicit)**:
+Definitions begin in `initial`, connect during the registration-time
+`activation` step, establish current state during synchronous `bootstrap`, then
+enter `live` before the builder returns its handle. They release resources
+during `dispose`. Bootstrap ordering is part of the contract: a replayable event
+log emits existing entries to its projection before live delivery, while a
+Stream-output state node gives a later subscriber only its current state.
 
-```typescript
-const doubled = computed(() => count.value * 2);
-// Dependencies tracked at runtime
-```
+## Authoritative topics
 
-**This demo (explicit)**:
+- [Unified DataGraph](./data-graph.md): taxonomy, topology, refs, edges,
+  snapshots, conversions, and feedback validation.
+- [State Nodes](./state-nodes.md): handles, configuration, four node kinds, and
+  complete usage examples.
+- [State Operations](./state-operations.md): set/reducer/mutation/action/dispatch
+  boundaries, creators, middleware, replay, results, and errors.
+- [Stream Lifecycle](./stream-lifecycle.md): activation, bootstrap, current-only
+  replay, live ordering, event-source/history ownership, and disposal.
+- [Unified State Migration](./migration-unified-state.md): old-to-new API and
+  demo migration guidance.
 
-```typescript
-graph.addComputed('doubled', ['count'], (ctx) => ctx.get('count') * 2);
-// Dependencies declared upfront
-```
-
-**Why explicit?**
-
-- Graph structure is inspectable without executing code
-- Enables tooling (visualization, validation, serialization)
-- Makes data flow obvious in large codebases
-
-### 2. Processors vs Computed
-
-| Computed                        | Processor                              |
-| ------------------------------- | -------------------------------------- |
-| Single output                   | Multiple outputs                       |
-| Pure function                   | Side effects allowed                   |
-| Returns value                   | Writes to other nodes                  |
-| `addComputed(id, deps, getter)` | `addProcessor(id, deps, outputs, run)` |
-
-**Example**: Counter parity check writes to both `isEven` and `label`:
-
-```typescript
-graph.addProcessor(
-  'processor/counterDerived',
-  ['counter'],
-  ['counter/isEven', 'counter/label'],
-  (ctx) => {
-    const c = ctx.get('counter');
-    ctx.set('counter/isEven', c % 2 === 0);
-    ctx.set('counter/label', c % 2 === 0 ? 'even' : 'odd');
-  },
-);
-```
-
-### 3. Async Nodes
-
-Async nodes automatically create three child signals:
-
-- `{id}/result` - the resolved value
-- `{id}/loading` - boolean loading state
-- `{id}/error` - error message or null
-
-This standardizes async state handling across the graph.
-
-### 4. Actor Isolation
-
-Frameworks don't share mutable state directly. Instead:
-
-- Each framework registers as an actor
-- Communication happens via typed messages
-- Actor handlers process messages sequentially (mailbox pattern)
-
-This prevents race conditions and makes cross-framework interactions explicit.
-
-### 5. Subgraph Bridging
-
-Main graph outputs flow into subgraphs via effect bridges:
-
-```typescript
-effect(() => {
-  const mainPlus300 = runtime.graph.get('plus300');
-  subgraph.set('input/mainPlus300', mainPlus300);
-});
-```
-
-This keeps subgraphs isolated while allowing them to react to main graph changes.
-
-## File Organization
-
-```
-packages/
-├── core/
-│   └── src/                # Reusable, framework-agnostic
-│       ├── graph.ts         # DataGraph class (+ middleware hooks)
-│       ├── middleware.ts    # GraphMiddleware API
-│       ├── plugins/         # logger/persist/validation plugins
-│       ├── stream/          # stream graph + factories
-│       ├── graph-builders.ts # JSON DSL + Code DSL
-│       ├── actor.ts         # ActorSystem
-│       └── watch.ts         # watch() utility
-├── react/                   # React hooks adapter
-├── vue/                     # Vue Composition API adapter
-├── solid/                   # Solid accessor adapter
-└── vanilla/                 # DOM/store adapter
-
-examples/
-└── demo/
-    └── src/
-        ├── app/            # DemoRuntime, intents, actor handlers
-        │   ├── graph/      # Main graph definition
-        │   └── subgraphs/  # Subgraph factories
-        └── views/          # UI layer (vanilla/vue/react/solid)
-```
-
-## Next Steps
-
-- [DataGraph](./data-graph.md) - Deep dive into node types and graph operations
-- [Graph Builders](./graph-builders.md) - Three construction modes explained
-- [Actor System](./actor-system.md) - Cross-framework messaging details
+These documents are normative for the unified state-node work. Package-local
+implementation notes may refine concrete generic spelling but must preserve the
+observable contracts documented here.

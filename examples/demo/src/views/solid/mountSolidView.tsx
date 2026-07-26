@@ -31,7 +31,10 @@ function SolidPanel(props: { runtime: DemoRuntime }) {
   const local = createMemo(() => counter() * 2);
 
   const subgraph = runtime.subgraphs.solid!;
-  const subLabel = useGraphSignal<string, DemoRuntime>(subgraph, getActorSubgraphRefs('solid').outputs.label);
+  const subLabel = useGraphSignal<string, DemoRuntime>(
+    subgraph,
+    getActorSubgraphRefs('solid').outputs.label,
+  );
 
   return (
     <div class="list">
@@ -67,16 +70,18 @@ function SolidPanel(props: { runtime: DemoRuntime }) {
           <input
             type="text"
             value={helloInput()}
-            onInput={(e) => runtime.intents.setInput(e.currentTarget.value)}
+            onInput={(e) => runtime.stateNodes.controls.mutations.setInput(e.currentTarget.value)}
           />
           {helloError() ? <div class="small">{helloError()}</div> : null}
         </div>
       </div>
 
       <div class="row">
-        <button onClick={() => runtime.intents.increase(1)}>+1</button>
-        <button onClick={() => runtime.intents.increase(10)}>+10</button>
-        <button onClick={() => runtime.intents.submit()}>Submit</button>
+        <button onClick={() => runtime.stateNodes.controls.mutations.increase(1)}>+1</button>
+        <button onClick={() => runtime.stateNodes.controls.actions.increaseByRuntimeStep()}>
+          +10
+        </button>
+        <button onClick={() => runtime.stateNodes.controls.actions.submit()}>Submit</button>
       </div>
     </div>
   );

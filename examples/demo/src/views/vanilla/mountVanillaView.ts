@@ -36,11 +36,11 @@ export function mountVanillaView(root: HTMLElement, runtime: DemoRuntime): void 
 
   const btnInc = document.createElement('button');
   btnInc.textContent = '+1';
-  btnInc.onclick = () => runtime.intents.increase(1);
+  btnInc.onclick = () => runtime.stateNodes.controls.mutations.increase(1);
 
   const btnInc10 = document.createElement('button');
   btnInc10.textContent = '+10';
-  btnInc10.onclick = () => runtime.intents.increase(10);
+  btnInc10.onclick = () => runtime.stateNodes.controls.actions.increaseByRuntimeStep();
 
   row1.append(btnInc, btnInc10);
 
@@ -51,16 +51,16 @@ export function mountVanillaView(root: HTMLElement, runtime: DemoRuntime): void 
   input.type = 'text';
   input.placeholder = 'type here...';
   input.oninput = (e) => {
-    runtime.intents.setInput((e.currentTarget as HTMLInputElement).value);
+    runtime.stateNodes.controls.mutations.setInput((e.currentTarget as HTMLInputElement).value);
   };
 
   const btnSubmit = document.createElement('button');
   btnSubmit.textContent = 'Submit';
-  btnSubmit.onclick = () => runtime.intents.submit();
+  btnSubmit.onclick = () => runtime.stateNodes.controls.actions.submit();
 
   const btnReset = document.createElement('button');
   btnReset.textContent = 'Reset';
-  btnReset.onclick = () => runtime.intents.reset();
+  btnReset.onclick = () => runtime.stateNodes.controls.mutations.reset();
 
   row2.append(input, btnSubmit, btnReset);
 

@@ -1,0 +1,86 @@
+<decisions #track.unify_signal_stream_state_nodes {
+  status = "confirmed"
+}
+(
+  <decision #track.unify_signal_stream_state_nodes.single_graph { priority = "P0" status = "confirmed" durable_candidate = true }
+  (
+    <question ?>Signal 与 Stream 是否使用同一个 graph？</?>
+    <answer { } (
+      <raw-answer ?>坚决不能拆分为两种不同的 graph。</?>
+      <decision-text ?>Signal 与 Stream SHALL 作为同一 DataGraph 内的不同节点语义。</?>
+      <rationale ?>项目初衷就是统一 stream 和 signal 图；双图会继续制造桥接、快照与生命周期割裂。</?>
+      <evidence ?>用户确认；现有双图和桥接 API 的结构事实。</?>
+    )>
+  )>
+  <decision #track.unify_signal_stream_state_nodes.four_nodes { priority = "P0" status = "confirmed" durable_candidate = true }
+  (
+    <question ?>本次实现哪些 state node？</?>
+    <answer { } (
+      <raw-answer ?>四个节点都做。</?>
+      <decision-text ?>实现 SignalDrivenStateSignalNode、SignalDrivenStateStreamNode、StreamDrivenStateSignalNode、StreamDrivenStateStreamNode。</?>
+      <rationale ?>输入语义与输出语义正交，完整矩阵避免继续堆业务特例。</?>
+      <evidence ?>用户列出的 2x2 节点矩阵。</?>
+    )>
+  )>
+  <decision #track.unify_signal_stream_state_nodes.mutation_action { priority = "P0" status = "confirmed" durable_candidate = true }
+  (
+    <question ?>状态节点暴露哪些更新 API？</?>
+    <answer { } (
+      <raw-answer ?>不暴露 set，但继续暴露 mutation、dispatch；mutation 采用注册表形式并提供 actions.xxx()/mutations.yyy() DX。</?>
+      <decision-text ?>状态节点不暴露 set；暴露 typed mutation registry 与 typed action registry，业务调用无需字符串。</?>
+      <rationale ?>命名注册表可维护、可记录、可扩展，同时避免任意 updater 绕过状态转移边界。</?>
+      <evidence ?>用户逐项确认。</?>
+    )>
+  )>
+  <decision #track.unify_signal_stream_state_nodes.emission { priority = "P0" status = "confirmed" durable_candidate = true }
+  (
+    <question ?>nextState 与旧状态 Object.is 相同时如何发布？</?>
+    <answer { } (
+      <raw-answer ?>输出为 Stream 的节点继续 emit。</?>
+      <decision-text ?>Stream state output 每个成功 transition 都 emit，并向新订阅者 replay 当前状态；Signal output 保持 Signal 去重。</?>
+      <rationale ?>Stream 表达 transition 序列，Signal 表达当前快照。</?>
+      <evidence ?>用户确认与两种输出语义差异。</?>
+    )>
+  )>
+  <decision #track.unify_signal_stream_state_nodes.runtime_name { priority = "P0" status = "confirmed" durable_candidate = true }
+  (
+    <question ?>runtime 回调参数使用 ctx 还是 rt？</?>
+    <answer { } (
+      <raw-answer ?>按照语义边界执行 ctx → rt。</?>
+      <decision-text ?>代表 GraphRuntime/action runtime 的回调参数使用 rt；真正的 MiddlewareContext 等 context 保持 ctx。</?>
+      <rationale ?>rt 缩小语义并准确指向 runtime，避免机械改名真实 context。</?>
+      <evidence ?>用户确认。</?>
+    )>
+  )>
+  <decision #track.unify_signal_stream_state_nodes.breaking_removal { priority = "P0" status = "confirmed" durable_candidate = true }
+  (
+    <question ?>旧双图与 projection API 是否保留？</?>
+    <answer { } (
+      <raw-answer ?>同意删除旧的 API；createReducerProjection 破坏性迁移。</?>
+      <decision-text ?>删除 StreamGraph、bridge API、ReducerProjection/createReducerProjection，不提供兼容层；AppendOnlyEventLog 保留并接入新节点。</?>
+      <rationale ?>避免两套并存导致设计继续分裂。</?>
+      <evidence ?>用户确认。</?>
+    )>
+  )>
+  <decision #track.unify_signal_stream_state_nodes.lifecycle_feedback { priority = "P0" status = "confirmed" durable_candidate = true }
+  (
+    <question ?>状态节点生命周期和混合反馈环策略是什么？</?>
+    <answer { } (
+      <raw-answer ?>同意建议。</?>
+      <decision-text ?>四类状态节点默认 eager；stream source/operator lazy、sink eager；混合反馈环默认禁止，显式 feedback/delay/scheduler boundary 后才允许。</?>
+      <rationale ?>状态节点不能因无人订阅而丢状态；跨语义环必须显式暴露时间边界。</?>
+      <evidence ?>用户对两项建议的确认。</?>
+    )>
+  )>
+  <decision #track.unify_signal_stream_state_nodes.docs_first { priority = "P0" status = "confirmed" durable_candidate = false }
+  (
+    <question ?>设计大重构先改文档还是先改代码？</?>
+    <answer { } (
+      <raw-answer ?>必须先更新 doc/，尽量完整转换讨论，避免信息丢失。</?>
+      <decision-text ?>P0 只重写权威 doc/，完成后 HumanConfirm；确认前禁止修改运行时代码。</?>
+      <rationale ?>文档先成为目标态真源，再驱动后续实现。</?>
+      <evidence ?>用户明确要求。</?>
+    )>
+  )>
+)
+>

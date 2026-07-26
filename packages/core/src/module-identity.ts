@@ -1,4 +1,7 @@
+import type { SignalNodeRef, StreamNodeRef } from './graph';
+
 export type NodeSection = 'input' | 'output' | 'state' | 'internal';
+export type NodeProtocol = 'signal' | 'stream';
 
 type SectionKey = 'inputs' | 'outputs' | 'state' | 'internals';
 
@@ -15,34 +18,62 @@ export type NodeRef<TValue = unknown, TSection extends NodeSection = NodeSection
   readonly __value?: TValue;
 };
 
-export type SlotDefinition<TValue, TSection extends NodeSection> = {
+export type SlotDefinition<
+  TValue,
+  TSection extends NodeSection,
+  TProtocol extends NodeProtocol | undefined = undefined,
+> = {
   readonly kind: 'slot-definition';
   readonly section: TSection;
+  readonly protocol?: TProtocol;
   readonly __value?: TValue;
 };
 
-type InputDefinition<TValue> = SlotDefinition<TValue, 'input'>;
-type OutputDefinition<TValue> = SlotDefinition<TValue, 'output'>;
-type StateDefinition<TValue> = SlotDefinition<TValue, 'state'>;
-type InternalDefinition<TValue> = SlotDefinition<TValue, 'internal'>;
+type InputDefinition<
+  TValue,
+  TProtocol extends NodeProtocol | undefined = undefined,
+> = SlotDefinition<TValue, 'input', TProtocol>;
+type OutputDefinition<
+  TValue,
+  TProtocol extends NodeProtocol | undefined = undefined,
+> = SlotDefinition<TValue, 'output', TProtocol>;
+type StateDefinition<
+  TValue,
+  TProtocol extends NodeProtocol | undefined = undefined,
+> = SlotDefinition<TValue, 'state', TProtocol>;
+type InternalDefinition<
+  TValue,
+  TProtocol extends NodeProtocol | undefined = undefined,
+> = SlotDefinition<TValue, 'internal', TProtocol>;
+
+export type ModuleSignalNodeRef<TValue, TSection extends NodeSection> = NodeRef<TValue, TSection> &
+  SignalNodeRef<TValue, TSection extends 'input' | 'state' ? true : false>;
+export type ModuleStreamNodeRef<TValue, TSection extends NodeSection> = NodeRef<TValue, TSection> &
+  StreamNodeRef<TValue>;
 
 export type GraphModuleDefinition = {
-  inputs?: Record<string, InputDefinition<any>>;
-  outputs?: Record<string, OutputDefinition<any>>;
-  state?: Record<string, StateDefinition<any>>;
-  internals?: Record<string, InternalDefinition<any>>;
+  inputs?: Record<string, InputDefinition<any, NodeProtocol | undefined>>;
+  outputs?: Record<string, OutputDefinition<any, NodeProtocol | undefined>>;
+  state?: Record<string, StateDefinition<any, NodeProtocol | undefined>>;
+  internals?: Record<string, InternalDefinition<any, NodeProtocol | undefined>>;
 };
 
-type SectionRefs<
-  TSectionDef,
-  TSection extends NodeSection,
-> = TSectionDef extends Record<string, SlotDefinition<any, TSection>>
-  ? {
-      readonly [K in keyof TSectionDef]: TSectionDef[K] extends SlotDefinition<infer TValue, TSection>
-        ? NodeRef<TValue, TSection>
-        : never;
-    }
-  : {};
+type SectionRefs<TSectionDef, TSection extends NodeSection> =
+  TSectionDef extends Record<string, SlotDefinition<any, TSection, NodeProtocol | undefined>>
+    ? {
+        readonly [K in keyof TSectionDef]: TSectionDef[K] extends SlotDefinition<
+          infer TValue,
+          TSection,
+          infer TProtocol
+        >
+          ? TProtocol extends 'signal'
+            ? ModuleSignalNodeRef<TValue, TSection>
+            : TProtocol extends 'stream'
+              ? ModuleStreamNodeRef<TValue, TSection>
+              : NodeRef<TValue, TSection>
+          : never;
+      }
+    : Record<never, never>;
 
 export type GraphModule<TDef extends GraphModuleDefinition = GraphModuleDefinition> = {
   readonly kind: 'graph-module';
@@ -96,6 +127,38 @@ export function internal<TValue>(): InternalDefinition<TValue> {
   return { kind: 'slot-definition', section: 'internal' };
 }
 
+export function signalInput<TValue>(): InputDefinition<TValue, 'signal'> {
+  return { kind: 'slot-definition', section: 'input', protocol: 'signal' };
+}
+
+export function streamInput<TValue>(): InputDefinition<TValue, 'stream'> {
+  return { kind: 'slot-definition', section: 'input', protocol: 'stream' };
+}
+
+export function signalOutput<TValue>(): OutputDefinition<TValue, 'signal'> {
+  return { kind: 'slot-definition', section: 'output', protocol: 'signal' };
+}
+
+export function streamOutput<TValue>(): OutputDefinition<TValue, 'stream'> {
+  return { kind: 'slot-definition', section: 'output', protocol: 'stream' };
+}
+
+export function signalState<TValue>(): StateDefinition<TValue, 'signal'> {
+  return { kind: 'slot-definition', section: 'state', protocol: 'signal' };
+}
+
+export function streamState<TValue>(): StateDefinition<TValue, 'stream'> {
+  return { kind: 'slot-definition', section: 'state', protocol: 'stream' };
+}
+
+export function signalInternal<TValue>(): InternalDefinition<TValue, 'signal'> {
+  return { kind: 'slot-definition', section: 'internal', protocol: 'signal' };
+}
+
+export function streamInternal<TValue>(): InternalDefinition<TValue, 'stream'> {
+  return { kind: 'slot-definition', section: 'internal', protocol: 'stream' };
+}
+
 export function defineGraphModule<const TDef extends GraphModuleDefinition>(
   moduleId: string,
   definition: TDef,
@@ -113,13 +176,15 @@ export function mountGraph<const TDef extends GraphModuleDefinition>(
 export function isNodeRef(value: unknown): value is NodeRef<unknown, NodeSection> {
   return Boolean(
     value &&
-      typeof value === 'object' &&
-      NODE_REF_BRAND in (value as Record<PropertyKey, unknown>) &&
-      (value as Record<PropertyKey, unknown>)[NODE_REF_BRAND] === true,
+    typeof value === 'object' &&
+    NODE_REF_BRAND in (value as Record<PropertyKey, unknown>) &&
+    (value as Record<PropertyKey, unknown>)[NODE_REF_BRAND] === true,
   );
 }
 
-export function toNodeId(ref: string | NodeRef<unknown, NodeSection>): string {
+export function toNodeId(
+  ref: string | NodeRef<unknown, NodeSection> | { readonly id: string },
+): string {
   return typeof ref === 'string' ? ref : ref.id;
 }
 
@@ -175,18 +240,28 @@ function buildMountedGraphModule<const TDef extends GraphModuleDefinition>(
 
 function materializeSection<TSection extends NodeSection>(
   moduleId: string,
-  section: Record<string, SlotDefinition<any, TSection>> | undefined,
+  section: Record<string, SlotDefinition<any, TSection, NodeProtocol | undefined>> | undefined,
   kind: TSection,
   scope?: string,
-): Record<string, NodeRef<unknown, TSection>> {
+): Record<
+  string,
+  | NodeRef<unknown, TSection>
+  | ModuleSignalNodeRef<unknown, TSection>
+  | ModuleStreamNodeRef<unknown, TSection>
+> {
   if (!section) {
     return {};
   }
 
-  const refs: Record<string, NodeRef<unknown, TSection>> = {};
+  const refs: Record<
+    string,
+    | NodeRef<unknown, TSection>
+    | ModuleSignalNodeRef<unknown, TSection>
+    | ModuleStreamNodeRef<unknown, TSection>
+  > = {};
 
   for (const key of Object.keys(section)) {
-    refs[key] = createNodeRef(moduleId, kind, key, scope);
+    refs[key] = createNodeRef(moduleId, kind, key, section[key].protocol, scope);
   }
 
   return refs;
@@ -196,12 +271,16 @@ function createNodeRef<TValue, TSection extends NodeSection>(
   moduleId: string,
   section: TSection,
   key: string,
+  protocol?: NodeProtocol,
   scope?: string,
-): NodeRef<TValue, TSection> {
+):
+  | NodeRef<TValue, TSection>
+  | ModuleSignalNodeRef<TValue, TSection>
+  | ModuleStreamNodeRef<TValue, TSection> {
   const localId = `${moduleId}.${SECTION_SEGMENT[section]}.${key}`;
   const id = scope ? `${scope}::${localId}` : localId;
 
-  return {
+  const ref: NodeRef<TValue, TSection> = {
     [NODE_REF_BRAND]: true,
     id,
     moduleId,
@@ -210,4 +289,18 @@ function createNodeRef<TValue, TSection extends NodeSection>(
     section,
     scope,
   };
+
+  if (protocol === 'signal') {
+    return {
+      ...ref,
+      protocol,
+      writable: (section === 'input' || section === 'state') as TSection extends 'input' | 'state'
+        ? true
+        : false,
+    };
+  }
+  if (protocol === 'stream') {
+    return { ...ref, protocol };
+  }
+  return ref;
 }

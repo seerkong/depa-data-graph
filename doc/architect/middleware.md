@@ -1,70 +1,35 @@
-# Middleware / Plugins
+# Middleware and named-operation hooks
 
-`DataGraph` supports middleware to implement cross-cutting concerns (logging, persistence, validation, metrics) without embedding those concerns into node logic.
-
-Middleware is registered via `graph.use(middleware)`.
-
-## GraphMiddleware
+`DataGraph` middleware observes cross-cutting behavior without creating a public state setter. A real `MiddlewareContext` is a context object and remains conventionally named `ctx`; it is distinct from runtime callback `rt`.
 
 ```ts
-import type { GraphMiddleware } from 'depa-data-graph-core';
-
-const middleware: GraphMiddleware<unknown> = {
-  name: 'my-middleware',
-
-  beforeGet: (id, ctx) => {
-    void ctx;
-    console.log('get', id);
+const middleware: GraphMiddleware<AppRuntime> = {
+  name: 'audit',
+  beforeMutation(operation, ctx: MiddlewareContext<AppRuntime>) {
+    ctx.logger.info(operation.name, operation.payload);
   },
-
-  afterGet: (id, value) => {
-    console.log('got', id, value);
-    return value;
+  afterAction(operation, ctx: MiddlewareContext<AppRuntime>) {
+    ctx.metrics.record(operation.name);
   },
-
-  beforeSet: (id, value) => {
-    console.log('set', id, value);
-    return value;
-  },
-
-  afterSet: (id) => {
-    console.log('set complete', id);
+  onDispatch(operation, ctx: MiddlewareContext<AppRuntime>) {
+    return operation;
   },
 };
-
-graph.use(middleware);
 ```
 
-Hooks:
+Middleware may observe named mutations, actions, and dispatch operations for
+logging, validation, replay, devtools, and an explicit persistence adapter or
+extension. Neither middleware nor that extension makes `AppendOnlyEventLog` or
+a state node internally persistent. Middleware can block or transform an
+operation only under the declared operation protocol. It cannot inject an
+arbitrary next state, expose `node.set`, or bypass a node’s typed mutation
+registry.
 
-- `beforeGet(id, ctx)`
-- `afterGet(id, value, ctx) => value`
-- `beforeSet(id, value, ctx) => value | undefined` (return `undefined` to block)
-- `afterSet(id, value, ctx)`
-- `onNodeAdd(node, ctx)`
-- `onBatch({ phase }, ctx)`
-- `onDispose(ctx)`
-
-## Built-in plugins
-
-The core package ships a few small middleware helpers:
-
-- `loggerPlugin()` - logs writes
-- `persistPlugin()` - persists a subset of keys to a storage backend
-- `validationPlugin()` - blocks writes based on per-id validation rules
-
-Example:
-
-```ts
-import { loggerPlugin, validationPlugin } from 'depa-data-graph-core';
-
-graph.use(loggerPlugin({ level: 'info' }));
-
-graph.use(
-  validationPlugin({
-    rules: {
-      counter: (v) => (typeof v === 'number' && v < 0 ? 'Cannot be negative' : null),
-    },
-  }),
-);
-```
+`dispatch` is the public shared extension point for those named operations; it
+accepts only the node's generated, namespaced `operations.mutations.*` or
+`operations.actions.*` union and preserves names/payloads for replay and
+diagnostics. Facades and direct typed dispatch use this same pipeline.
+State-node action factories instead receive `StateNodeActionRuntime` as `rt`,
+using `rt.graph`, `rt.getState()`, `rt.mutations`, typed `rt.dispatch`, and
+`rt.bizRuntime` according to their role. Reducers and mutation handlers receive
+only state and input/payload, never `rt` or `ctx`.

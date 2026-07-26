@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  AppendOnlyEventLog,
-  createReducerProjection,
-  OrderedTimeline,
-} from '../src/stream/timeline';
+import { AppendOnlyEventLog, OrderedTimeline } from '../src/stream/timeline';
+import { DataGraph } from '../src/graph';
 
 function tick(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
@@ -41,11 +38,7 @@ describe('timeline/log/projection foundations', () => {
     control.append('c2');
     await tick();
 
-    expect(timelineSeen).toEqual([
-      '1:control:c1',
-      '2:content:t1',
-      '3:control:c2',
-    ]);
+    expect(timelineSeen).toEqual(['1:control:c1', '2:content:t1', '3:control:c2']);
     expect(controlSeen).toEqual(['1:control:c1', '3:control:c2']);
     expect(contentSeen).toEqual(['2:content:t1']);
 
@@ -81,7 +74,11 @@ describe('timeline/log/projection foundations', () => {
     log.append(2);
     log.append(3);
 
-    const projection = createReducerProjection(log, {
+    const graph = new DataGraph(() => ({}));
+    const entries = graph.addSource('log-entries', log.stream());
+    const projection = graph.addStreamDrivenStateSignalNode({
+      id: 'log-projection',
+      input: entries.ref,
       initial: 0,
       reducer: (state, entry) => state + entry.value,
     });
@@ -89,10 +86,8 @@ describe('timeline/log/projection foundations', () => {
     expect(projection.getState()).toBe(5);
 
     const seen: number[] = [];
-    const sub = projection.stream().subscribe({
-      next: (value) => seen.push(value),
-      error: () => {},
-      complete: () => {},
+    graph.addConsumer('projection-observer', [projection.output], () => {
+      seen.push(projection.getState());
     });
 
     log.append(4);
@@ -100,20 +95,23 @@ describe('timeline/log/projection foundations', () => {
 
     expect(seen).toEqual([5, 9]);
 
-    sub.unsubscribe();
-    projection.dispose();
+    graph.dispose();
     log.dispose();
   });
 
   it('stops emitting projection updates after disposal', async () => {
     const log = new AppendOnlyEventLog<number>();
-    const projection = createReducerProjection(log, {
+    const graph = new DataGraph(() => ({}));
+    const entries = graph.addSource('disposable-log-entries', log.stream());
+    const projection = graph.addStreamDrivenStateStreamNode({
+      id: 'disposable-log-projection',
+      input: entries.ref,
       initial: 0,
       reducer: (state, entry) => state + entry.value,
     });
 
     const seen: number[] = [];
-    const sub = projection.stream().subscribe({
+    const sub = graph.stream(projection.output).subscribe({
       next: (value) => seen.push(value),
       error: () => {},
       complete: () => {},
@@ -126,6 +124,7 @@ describe('timeline/log/projection foundations', () => {
     expect(seen).toEqual([0]);
 
     sub.unsubscribe();
+    graph.dispose();
     log.dispose();
   });
 });

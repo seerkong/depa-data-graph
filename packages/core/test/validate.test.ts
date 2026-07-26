@@ -24,7 +24,7 @@ describe('DataGraph.validate()', () => {
     const graph = new DataGraph(() => ({}));
 
     graph.addSignal('a', 0);
-    graph.addComputed('readonly', ['a'], (ctx) => ctx.graph.get<number>('a'));
+    graph.addComputed('readonly', ['a'], (rt) => rt.graph.get<number>('a'));
     graph.addProcessor('p', ['a'], ['readonly'], () => {});
 
     const errors = graph.validate();
@@ -39,8 +39,8 @@ describe('DataGraph.validate()', () => {
   it('reports cycles in declared deps', () => {
     const graph = new DataGraph(() => ({}));
 
-    graph.addComputed('x', ['y'], (ctx) => ctx.graph.get<number>('y'));
-    graph.addComputed('y', ['x'], (ctx) => ctx.graph.get<number>('x'));
+    graph.addComputed('x', ['y'], (rt) => rt.graph.get<number>('y'));
+    graph.addComputed('y', ['x'], (rt) => rt.graph.get<number>('x'));
 
     const errors = graph.validate();
     const cycle = errors.find((e) => e.kind === 'cycle');

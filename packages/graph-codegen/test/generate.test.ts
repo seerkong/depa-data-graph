@@ -1,8 +1,28 @@
 import { describe, expect, it } from 'vitest';
 
 import { generateGraphIdentitySurface, generateGraphModel } from '../src/generate';
+import { parseJsonGraphSpecV1 } from '../src/parse';
 
 describe('graph-codegen', () => {
+  it('parses all four state-node JSON kinds and their registry keys', () => {
+    const nodes = [
+      'signalDrivenStateSignal',
+      'signalDrivenStateStream',
+      'streamDrivenStateSignal',
+      'streamDrivenStateStream',
+    ].map((kind, index) => ({
+      kind,
+      id: `state-${index}`,
+      input: index < 2 ? 'signal-input' : 'stream-input',
+      initial: 0,
+      reducerKey: 'counter/reduce',
+      mutationsKey: 'counter/mutations',
+      actionsKey: 'counter/actions',
+    }));
+
+    expect(parseJsonGraphSpecV1({ version: 1, nodes }).nodes).toHaveLength(4);
+  });
+
   it('generates GraphModel with async subnodes', () => {
     const spec = {
       version: 1,
@@ -31,11 +51,67 @@ describe('graph-codegen', () => {
       nodes: [
         { kind: 'signal', id: 'counter', initial: 0, flags: { in: true, out: true } },
         { kind: 'signal', id: 'hello/input', initial: '', flags: { in: true, out: true } },
-        { kind: 'computed', id: 'doubled', deps: ['counter'], logicKey: 'doubled', flags: { out: true } },
+        {
+          kind: 'computed',
+          id: 'doubled',
+          deps: ['counter'],
+          logicKey: 'doubled',
+          flags: { out: true },
+        },
         { kind: 'computed', id: 'private/preview', deps: ['counter'], logicKey: 'preview' },
-        { kind: 'processor', id: 'processor/logCounter', deps: ['counter'], outputs: [], logicKey: 'logCounter' },
-        { kind: 'async', id: 'fetchUser', deps: [], initial: null, logicKey: 'fetchUser', flags: { out: true } },
-        { kind: 'async', id: 'loadDraft', deps: [], initial: { draft: true }, logicKey: 'loadDraft' },
+        {
+          kind: 'processor',
+          id: 'processor/logCounter',
+          deps: ['counter'],
+          outputs: [],
+          logicKey: 'logCounter',
+        },
+        {
+          kind: 'async',
+          id: 'fetchUser',
+          deps: [],
+          initial: null,
+          logicKey: 'fetchUser',
+          flags: { out: true },
+        },
+        {
+          kind: 'async',
+          id: 'loadDraft',
+          deps: [],
+          initial: { draft: true },
+          logicKey: 'loadDraft',
+        },
+        {
+          kind: 'signalDrivenStateSignal',
+          id: 'search/current',
+          input: 'counter',
+          initial: 0,
+          reducerKey: 'search/reduce',
+          mutationsKey: 'search/mutations',
+          actionsKey: 'search/actions',
+          flags: { out: true },
+        },
+        {
+          kind: 'signalDrivenStateStream',
+          id: 'search/transitions',
+          input: 'counter',
+          initial: 0,
+          reducerKey: 'search/reduce',
+        },
+        {
+          kind: 'streamDrivenStateSignal',
+          id: 'events/current',
+          input: 'events',
+          initial: 0,
+          reducerKey: 'events/reduce',
+        },
+        {
+          kind: 'streamDrivenStateStream',
+          id: 'events/timeline',
+          input: 'events',
+          initial: [],
+          reducerKey: 'events/timeline',
+        },
       ],
     } as const;
 
@@ -45,7 +121,9 @@ describe('graph-codegen', () => {
     });
 
     expect(out).toContain("export const GraphModule = defineGraphModule('demoGraph'");
-    expect(out).toContain("import { defineGraphModule, input, internal, output, state } from 'depa-data-graph-core';");
+    expect(out).toContain(
+      "import { defineGraphModule, input, internal, output, state } from 'depa-data-graph-core';",
+    );
     expect(out).toContain('counter: input<number>(),');
     expect(out).toContain('hello_input: input<string>(),');
     expect(out).toContain('counter: state<number>(),');
@@ -69,5 +147,16 @@ describe('graph-codegen', () => {
     expect(out).not.toContain("'private/preview': GraphModule.outputs.private_preview,");
     expect(out).not.toContain("'loadDraft/result': GraphModule.outputs.loadDraft_result,");
     expect(out).toContain('export const DemoGraphIdentity = {');
+    expect(out).toContain('search_current: signalOutput<number>(),');
+    expect(out).toContain('search_transitions: streamInternal<number>(),');
+    expect(out).toContain('events_current: signalInternal<number>(),');
+    expect(out).toContain('events_timeline: streamInternal<unknown[]>(),');
+    expect(out).toContain(
+      "export type GeneratedGraphStateNodeId = 'search/current' | 'search/transitions' | 'events/current' | 'events/timeline';",
+    );
+    expect(out).toContain('TStateNodes extends Record<GeneratedGraphStateNodeId, unknown>');
+    expect(out).toContain('): Pick<TStateNodes, GeneratedGraphStateNodeId> {');
+    expect(out).toContain("'search/current': built.stateNodes['search/current'],");
+    expect(out).toContain("'events/timeline': built.stateNodes['events/timeline'],");
   });
 });

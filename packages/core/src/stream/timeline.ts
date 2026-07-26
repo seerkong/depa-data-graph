@@ -11,15 +11,6 @@ export interface TimelineStreamOptions {
   replay?: boolean;
 }
 
-export interface ProjectionStreamOptions {
-  emitCurrent?: boolean;
-}
-
-export interface ReducerProjectionOptions<TEvent, TState> {
-  initial: TState;
-  reducer: (state: TState, entry: TimelineEntry<TEvent>) => TState;
-}
-
 export interface TimelineChannel<T> {
   readonly id: string;
   append(value: T): TimelineEntry<T>;
@@ -218,78 +209,3 @@ export class OrderedTimeline<T> {
 }
 
 export class AppendOnlyEventLog<T> extends OrderedTimeline<T> {}
-
-export class ReducerProjection<TEvent, TState> {
-  private readonly listeners = new Set<ValueListener<TState>>();
-  private disposed = false;
-  private unsubscribeFromLog: (() => void) | null = null;
-  private state: TState;
-
-  constructor(
-    private readonly log: AppendOnlyEventLog<TEvent>,
-    private readonly options: ReducerProjectionOptions<TEvent, TState>,
-  ) {
-    this.state = this.options.initial;
-
-    for (const entry of this.log.entries()) {
-      this.state = this.options.reducer(this.state, entry);
-    }
-
-    const logStream = this.log.stream({ replay: false });
-    const sub = logStream.subscribe({
-      next: (entry) => {
-        if (this.disposed) {
-          return;
-        }
-        this.state = this.options.reducer(this.state, entry);
-        for (const listener of this.listeners) {
-          listener(this.state);
-        }
-      },
-      error: () => {},
-      complete: () => {
-        this.dispose();
-      },
-    });
-
-    this.unsubscribeFromLog = () => {
-      sub.unsubscribe();
-    };
-  }
-
-  getState(): TState {
-    return this.state;
-  }
-
-  stream(options?: ProjectionStreamOptions): Stream<TState> {
-    return createReplayableStream(
-      () => [this.getState()],
-      (listener) => {
-        this.listeners.add(listener);
-        return () => {
-          this.listeners.delete(listener);
-        };
-      },
-      () => this.disposed,
-      options,
-    );
-  }
-
-  dispose(): void {
-    if (this.disposed) {
-      return;
-    }
-
-    this.disposed = true;
-    this.unsubscribeFromLog?.();
-    this.unsubscribeFromLog = null;
-    this.listeners.clear();
-  }
-}
-
-export function createReducerProjection<TEvent, TState>(
-  log: AppendOnlyEventLog<TEvent>,
-  options: ReducerProjectionOptions<TEvent, TState>,
-): ReducerProjection<TEvent, TState> {
-  return new ReducerProjection(log, options);
-}

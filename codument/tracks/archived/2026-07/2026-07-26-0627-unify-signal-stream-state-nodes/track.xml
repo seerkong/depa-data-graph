@@ -1,0 +1,156 @@
+<Track id="unify-signal-stream-state-nodes" version="1" xmlns:cdt="urn:codument:v1">
+  <Metadata>
+    <Status>completed</Status>
+    <Goal>在唯一 DataGraph 中统一 Signal/Stream，并提供四类带 typed mutations/actions 的状态节点</Goal>
+    <Description>docs-first 的破坏性架构迁移：统一拓扑、状态节点、生命周期、旧 API 删除与 demo/codegen 迁移</Description>
+    <QuestionMode>decision-tree</QuestionMode>
+    <QuestionSeverity>auto</QuestionSeverity>
+    <CommitMode>manual</CommitMode>
+    <GapRound>3</GapRound>
+    <CreatedAt>2026-07-25T14:12:36Z</CreatedAt>
+    <UpdatedAt>2026-07-26T03:27:12Z</UpdatedAt>
+  </Metadata>
+  <Ports scope="track">
+    <MaterialBundle role="input" name="behavior-deltas" domain="behavior" path="vfs://./behavior_deltas/"/>
+    <MaterialBundle role="input" name="current-docs" domain="doc" path="vfs://@/doc/"/>
+    <MaterialBundle role="input" name="current-source" domain="code" path="vfs://@/packages/"/>
+    <MaterialBundle role="output" name="behavior" domain="codument" path="vfs://@/codument/behaviors/"/>
+    <MaterialBundle role="output" name="architecture-docs" domain="doc" path="vfs://@/doc/"/>
+    <MaterialBundle role="output" name="source" domain="code" path="vfs://@/packages/"/>
+    <MaterialBundle role="output" name="demo" domain="code" path="vfs://@/examples/demo/"/>
+  </Ports>
+  <TaskSpace id="space_unify-signal-stream-state-nodes" name="unify-signal-stream-state-nodes" version="1">
+    <Description>先建立权威目标设计，再按统一图基础、状态节点、破坏性迁移、消费层同步和最终验证推进</Description>
+    <SubNodes>
+      <TaskGroup id="P0" name="权威文档先行" status="DONE" order="0">
+        <Description>只修改 doc/，把已确认讨论完整转为 Unified DataGraph 目标设计；人工确认前禁止运行时代码改动。</Description>
+        <cdt:Gate>
+          <cdt:Criterion>doc/ 完整覆盖单图、四方向、四类状态节点、typed mutation/action、rt、输出语义、生命周期、反馈环、snapshot/ref/edge、breaking migration 与 demo 目标</cdt:Criterion>
+          <cdt:Criterion>旧双层/桥接/stream-as-source/ActorSystem 文档已删除或明确标记为 superseded historical alternative</cdt:Criterion>
+          <cdt:Criterion>packages/**/src 与 examples/** 在 P0 无新增运行时改动</cdt:Criterion>
+        </cdt:Gate>
+        <SubNodes>
+          <Task id="T0.1" name="重写 Unified DataGraph 权威设计文档" status="DONE" order="0" priority="P0">
+            <Description>修订 doc/architect 与 doc/support-stream，使其从结论摘要升级为可直接指导实现的权威设计；完整固化概念边界、typed API、时序、扩展点、迁移矩阵与设计理由，并消除 handle/ref、reducer runtime 和 dispatch public surface 的矛盾。</Description>
+            <cdt:Acceptance>
+              <cdt:Criterion id="T0.1-AC1" checked="true">doc/ 的入口、总览与专题文档形成一致、可实现的 Unified DataGraph 目标设计且内部链接有效</cdt:Criterion>
+              <cdt:Criterion id="T0.1-AC2" checked="true">完整区分 graph.set、input reducer、mutation、action、dispatch；明确状态节点/output ref 无 set，typed dispatch 与 facade 共用 operation 管线</cdt:Criterion>
+              <cdt:Criterion id="T0.1-AC3" checked="true">正式定义四类节点的 handle/output ref/config/reducer/mutation/action runtime/dispatch 类型关系并消除跨文档矛盾</cdt:Criterion>
+              <cdt:Criterion id="T0.1-AC4" checked="true">四类节点分别具有职责、选择标准、真实用例与示例，并记录 Driven/StateSignal/StateStream/Node 的命名理由</cdt:Criterion>
+              <cdt:Criterion id="T0.1-AC5" checked="true">明确 initial→eager activation→bootstrap→live→dispose 时序、Signal 当前值 bootstrap、event-log 历史归约和 Stream current-only replay</cdt:Criterion>
+              <cdt:Criterion id="T0.1-AC6" checked="true">完整统一图包含 Signal/Computed/Processor/Consumer、Stream Source/Operator/Sink、四类状态节点和双向显式转换</cdt:Criterion>
+              <cdt:Criterion id="T0.1-AC7" checked="true">明确 Signal 同值去重、Stream 同值 emit/current replay、action 多 mutation、并发/事务非目标、生命周期与 dispose</cdt:Criterion>
+              <cdt:Criterion id="T0.1-AC8" checked="true">定义 typed refs/edges/snapshot 与 feedback/delay/scheduler boundary 的目标 shape、合法/非法环和实现约束</cdt:Criterion>
+              <cdt:Criterion id="T0.1-AC9" checked="true">提供旧 API→新机制、AppendOnlyEventLog projection、ctx→rt/makeRuntime 与 demo intents→mutations/actions 的逐项迁移表</cdt:Criterion>
+              <cdt:Criterion id="T0.1-AC10" checked="true">文档保留关键设计理由和权衡；旧 API 仅在 breaking/superseded 语境出现；P0 不修改 packages/**、examples/** 或 README*</cdt:Criterion>
+            </cdt:Acceptance>
+          </Task>
+        </SubNodes>
+        <Hooks>
+          <Hook on="phase:after" status="DONE"><cdt:AttractorCheck use="docs" result="PASS"/></Hook>
+          <Hook on="phase:after" status="DONE"><cdt:HumanConfirm result="PASS"/></Hook>
+        </Hooks>
+      </TaskGroup>
+      <TaskGroup id="P1" name="统一图基础" status="DONE" order="1">
+        <Description>把 Stream 节点、typed ref、edge、snapshot、生命周期与混合环验证纳入 DataGraph。</Description>
+        <cdt:Gate><cdt:Criterion>统一图基础的 runtime/type tests、snapshot 与 lifecycle tests 通过</cdt:Criterion></cdt:Gate>
+        <SubNodes>
+          <Task id="T1.1" name="冻结双图迁移行为基线" status="DONE" order="0" priority="P0">
+            <Description>为现有 StreamGraph、桥接、cleanup、timeline 和 snapshot 补齐 characterization/type tests，明确需要保留或被新语义取代的行为。</Description>
+            <cdt:Acceptance><cdt:Criterion id="T1.1-AC1" checked="true">迁移前 Signal/Stream 生命周期、cleanup、replay、bridge 行为基线可独立运行</cdt:Criterion></cdt:Acceptance>
+          </Task>
+          <Task id="T1.2" name="实现统一 node ref、edge 与 snapshot" status="DONE" order="1" priority="P0">
+            <Description>引入 SignalNodeRef/StreamNodeRef 与统一 node kind/edge/snapshot，使 Stream 节点注册在 DataGraph。</Description>
+            <cdt:Acceptance><cdt:Criterion id="T1.2-AC1" checked="true">四方向拓扑可注册、读取、stream 访问、snapshot 与验证</cdt:Criterion></cdt:Acceptance>
+          </Task>
+          <Task id="T1.3" name="实现统一生命周期与反馈环验证" status="DONE" order="2" priority="P0">
+            <Description>实现 source/operator lazy、sink eager 与显式 feedback boundary；默认拒绝 Signal/Stream 混合环。</Description>
+            <cdt:Acceptance><cdt:Criterion id="T1.3-AC1" checked="true">生命周期、dispose、cleanup 与混合环正反例测试通过</cdt:Criterion></cdt:Acceptance>
+          </Task>
+        </SubNodes>
+        <Hooks><Hook on="phase:after" status="DONE"><cdt:AttractorCheck use="coding" result="PASS"/></Hook></Hooks>
+      </TaskGroup>
+      <TaskGroup id="P2" name="四类状态节点与 typed 更新 API" status="DONE" order="2">
+        <Description>实现四类状态节点、getState、typed mutations/actions、dispatch 扩展边界与发射语义。</Description>
+        <cdt:Gate><cdt:Criterion>四类节点的 runtime/type tests 全部通过且无公共 set/updater 入口</cdt:Criterion></cdt:Gate>
+        <SubNodes>
+          <Task id="T2.1" name="编写四类状态节点契约测试" status="DONE" order="0" priority="P0">
+            <Description>从 behavior delta 建立四节点矩阵、状态查询、Signal 去重、Stream 同值 emit/replay 与 eager 消费的失败测试和 type tests。</Description>
+            <cdt:Acceptance><cdt:Criterion id="T2.1-AC1" checked="true">行为和类型测试在实现前失败并覆盖四种组合</cdt:Criterion></cdt:Acceptance>
+          </Task>
+          <Task id="T2.2" name="实现状态节点核心" status="DONE" order="1" priority="P0">
+            <Description>实现 initial/input reducer/state storage/output publisher/getState 与 dispose。</Description>
+            <cdt:Acceptance><cdt:Criterion id="T2.2-AC1" checked="true">四类状态节点行为测试通过</cdt:Criterion></cdt:Acceptance>
+          </Task>
+          <Task id="T2.3" name="实现 typed mutations/actions 与 dispatch 扩展" status="DONE" order="2" priority="P0">
+            <Description>从注册表推导公共 facade；action factory 使用 rt，状态只经 mutation 更新；为日志/middleware/replay 保留内部名称扩展点。</Description>
+            <cdt:Acceptance><cdt:Criterion id="T2.3-AC1" checked="true">mutations/actions payload 推断正确，action 只能经 rt.mutations 更新且节点不暴露 set</cdt:Criterion></cdt:Acceptance>
+          </Task>
+        </SubNodes>
+        <Hooks><Hook on="phase:after" status="DONE"><cdt:AttractorCheck use="coding" result="PASS"/></Hook></Hooks>
+      </TaskGroup>
+      <TaskGroup id="P3" name="破坏性迁移与旧 API 删除" status="DONE" order="3">
+        <Description>移除双图/桥接/ReducerProjection，迁移 AppendOnlyEventLog，并完成 runtime 参数 ctx→rt。</Description>
+        <cdt:Gate><cdt:Criterion>旧 API 与 runtime-ctx 残留扫描通过，event log projection 新 API 测试通过</cdt:Criterion></cdt:Gate>
+        <SubNodes>
+          <Task id="T3.1" name="删除 StreamGraph 与桥接公共 API" status="DONE" order="0" priority="P0">
+            <Description>删除 StreamGraph、GraphBridge、StreamBridgeManager、subscribeStreamToSignal、signalToStream 及对应双图实现/导出，迁移保留行为到统一图。</Description>
+            <cdt:Acceptance><cdt:Criterion id="T3.1-AC1" checked="true">旧双图/桥接标识符在现役源码与导出中为 0，统一图替代测试通过</cdt:Criterion></cdt:Acceptance>
+          </Task>
+          <Task id="T3.2" name="迁移 AppendOnlyEventLog projection" status="DONE" order="1" priority="P0">
+            <Description>删除 ReducerProjection/createReducerProjection；保留 AppendOnlyEventLog 并接入 Stream-driven state nodes，覆盖历史 replay 与实时 append。</Description>
+            <cdt:Acceptance><cdt:Criterion id="T3.2-AC1" checked="true">旧 projection API 为 0，新 projection 场景顺序与状态正确</cdt:Criterion></cdt:Acceptance>
+          </Task>
+          <Task id="T3.3" name="按语义边界迁移 ctx 到 rt" status="DONE" order="2" priority="P0">
+            <Description>GraphRuntime/action runtime 回调形参及 makeCtx 迁移为 rt/makeRuntime；MiddlewareContext 等真实 context 保持 ctx。</Description>
+            <cdt:Acceptance><cdt:Criterion id="T3.3-AC1" checked="true">GraphRuntime 回调不再以 ctx 命名，MiddlewareContext 语义未被误改</cdt:Criterion></cdt:Acceptance>
+          </Task>
+        </SubNodes>
+        <Hooks><Hook on="phase:after" status="DONE"><cdt:AttractorCheck use="coding" result="PASS"/></Hook></Hooks>
+      </TaskGroup>
+      <TaskGroup id="P4" name="构建层、demo 与公共文档同步" status="DONE" order="4">
+        <Description>同步 builders、typed graph、JSON/codegen、adapters、demo、README 与 changelog。</Description>
+        <cdt:Gate><cdt:Criterion>所有构建模式与 demo 使用统一图和 typed mutations/actions，全仓公共文档与实现一致</cdt:Criterion></cdt:Gate>
+        <SubNodes>
+          <Task id="T4.1" name="扩展 builders、typed graph 与 codegen" status="DONE" order="0" priority="P0">
+            <Description>让 imperative/Code DSL/JSON DSL/schema-first/module refs/codegen 支持 Signal/Stream refs、四类状态节点及 typed facade。</Description>
+            <cdt:Acceptance><cdt:Criterion id="T4.1-AC1" checked="true">构建层 runtime/type/generator tests 覆盖新 node kinds 与调用 facade</cdt:Criterion></cdt:Acceptance>
+          </Task>
+          <Task id="T4.2" name="迁移 demo 为 mutations/actions" status="DONE" order="1" priority="P0">
+            <Description>移除 runtime.intents，展示四类状态节点、action、event log projection、replay、同值 emit 与显式 Signal⇄Stream。</Description>
+            <cdt:Acceptance><cdt:Criterion id="T4.2-AC1" checked="true">demo 无 intents/旧 StreamGraph/bridge/projection API 且 build 与 smoke tests 通过</cdt:Criterion></cdt:Acceptance>
+          </Task>
+          <Task id="T4.3" name="同步 adapters、README 与 changelog" status="DONE" order="2" priority="P1">
+            <Description>更新框架 adapters、README/README-CN、packages changelog 与 P0 设计文档中的最终可执行示例。</Description>
+            <cdt:Acceptance><cdt:Criterion id="T4.3-AC1" checked="true">公共文档示例可 typecheck，adapter 测试通过，breaking migration 清晰</cdt:Criterion></cdt:Acceptance>
+          </Task>
+        </SubNodes>
+        <Hooks><Hook on="phase:after" status="DONE"><cdt:AttractorCheck use="coding" result="PASS"/></Hook></Hooks>
+      </TaskGroup>
+      <TaskGroup id="P5" name="全仓验证与目标对比" status="DONE" order="5">
+        <Description>执行残留扫描、全仓质量门、独立 verify 与最终 GapLoop。</Description>
+        <cdt:Gate><cdt:Criterion>test/typecheck/lint/build/codument validate 全绿，旧 API 与错误命名残留为 0，GapLoop NO_GAP</cdt:Criterion></cdt:Gate>
+        <SubNodes>
+          <Task id="T5.1" name="运行全仓验收与残留扫描" status="DONE" order="0" priority="P0">
+            <Description>运行测试、typecheck、lint、build、strict validate，扫描旧 API、runtime.intents、错误 ctx/rt 与文档漂移。</Description>
+            <cdt:Acceptance>
+              <cdt:Criterion id="T5.1-AC1" checked="true">pnpm test、typecheck、lint、build 与 codument validate --strict 通过</cdt:Criterion>
+              <cdt:Criterion id="T5.1-AC2" checked="true">旧双图/桥接/ReducerProjection/runtime.intents 与 GraphRuntime-ctx 残留扫描为 0</cdt:Criterion>
+            </cdt:Acceptance>
+          </Task>
+          <Task id="T5.2" name="补齐四类状态节点的构建层 action 类型契约" status="DONE" order="1" priority="P0">
+            <Description>修复首轮 GapLoop 发现的 Code DSL 与 schema-first helper action factory 上下文类型缺口，并用四节点矩阵 type/runtime tests 固化 typed rt、payload、return 与 facade。</Description>
+            <cdt:Acceptance>
+              <cdt:Criterion id="T5.2-AC1" checked="true">Code DSL 与 schema-first typed graph 的四类状态节点均为 inline action factory 提供 typed rt，并保留 actions facade 的 payload 与返回类型</cdt:Criterion>
+              <cdt:Criterion id="T5.2-AC2" checked="true">四类构建路径的 runtime/type tests 通过，且全仓 test/typecheck/lint/build/strict validate 保持全绿</cdt:Criterion>
+            </cdt:Acceptance>
+          </Task>
+        </SubNodes>
+        <Hooks>
+          <Hook on="phase:after" status="DONE"><cdt:AttractorCheck use="coding" result="PASS"/></Hook>
+          <Hook on="phase:after" status="DONE"><cdt:GapLoop max-rounds="5" on-exhausted="block" verify-round="true" result="NO_GAP"/></Hook>
+        </Hooks>
+      </TaskGroup>
+    </SubNodes>
+  </TaskSpace>
+</Track>

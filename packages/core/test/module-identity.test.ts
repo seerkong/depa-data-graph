@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { DataGraph } from '../src/graph';
+
 import {
   defineGraphModule,
   input,
@@ -7,7 +9,11 @@ import {
   isNodeRef,
   mountGraph,
   output,
+  signalInput,
+  signalOutput,
   state,
+  streamInput,
+  streamOutput,
   toNodeId,
 } from '../src/module-identity';
 
@@ -66,12 +72,34 @@ describe('graph module identity core', () => {
     expect(toNodeId(main.outputs.semanticEvents)).toBe('agent/main::stage.outputs.semanticEvents');
     expect(toNodeId(main.state.lexicalSeq)).toBe('agent/main::stage.state.lexicalSeq');
 
-    expect(toNodeId(reviewer.inputs.lexicalEvents)).toBe('agent/reviewer::stage.inputs.lexicalEvents');
-    expect(toNodeId(reviewer.outputs.semanticEvents)).toBe('agent/reviewer::stage.outputs.semanticEvents');
+    expect(toNodeId(reviewer.inputs.lexicalEvents)).toBe(
+      'agent/reviewer::stage.inputs.lexicalEvents',
+    );
+    expect(toNodeId(reviewer.outputs.semanticEvents)).toBe(
+      'agent/reviewer::stage.outputs.semanticEvents',
+    );
     expect(toNodeId(reviewer.state.lexicalSeq)).toBe('agent/reviewer::stage.state.lexicalSeq');
 
     expect(toNodeId(main.inputs.lexicalEvents)).not.toBe(toNodeId(reviewer.inputs.lexicalEvents));
     expect(main.public.inputs.lexicalEvents).toBe(main.inputs.lexicalEvents);
     expect(main.public.outputs.semanticEvents).toBe(main.outputs.semanticEvents);
+  });
+
+  it('materializes protocol-specific Signal and Stream module refs', () => {
+    const stage = defineGraphModule('stage', {
+      inputs: { criteria: signalInput<string>(), events: streamInput<number>() },
+      outputs: { current: signalOutput<number>(), transitions: streamOutput<number>() },
+    } as const);
+
+    expect(stage.inputs.criteria).toMatchObject({ protocol: 'signal', writable: true });
+    expect(stage.inputs.events).toMatchObject({ protocol: 'stream' });
+    expect(stage.outputs.current).toMatchObject({ protocol: 'signal' });
+    expect(stage.outputs.transitions).toMatchObject({ protocol: 'stream' });
+
+    const graph = new DataGraph(() => ({}));
+    graph.addSignal(stage.inputs.criteria, 'ready');
+    graph.addSource(stage.inputs.events, { start: () => {}, stop: () => {} });
+    expect(graph.get(stage.inputs.criteria)).toBe('ready');
+    expect(graph.stream(stage.inputs.events)).toBeDefined();
   });
 });

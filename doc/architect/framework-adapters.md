@@ -1,120 +1,31 @@
-# Framework Adapters
+# Framework adapters
 
-This project ships small per-framework adapter packages that bridge `DataGraph` updates into each UI framework.
+Adapters are thin integrations over the unified `DataGraph`; they do not add a reactive runtime or mutate graph state directly.
 
-Packages:
-
-- `depa-data-graph-react`
-- `depa-data-graph-vue`
-- `depa-data-graph-solid`
-- `depa-data-graph-vanilla`
-
-The adapters are intentionally thin:
-
-- No new reactive system is introduced.
-- Subscriptions are driven by `DataGraph.get()` reads.
-- Cleanup follows the host framework conventions.
-
-## React (`depa-data-graph-react`)
-
-Exports:
-
-- `useGraphSignal<T>(graph, id): T`
-- `useGraph(graph, ids): Record<id, unknown>`
-- `useGraphComputed<T>(graph, selector): T`
+| Output semantic | Adapter responsibility                                             | View operation                       |
+| --------------- | ------------------------------------------------------------------ | ------------------------------------ |
+| Signal          | subscribe/read the current value represented by `SignalNodeRef<T>` | `graph.get(ref)` or a Signal hook    |
+| Stream          | subscribe with host-lifecycle cleanup to `StreamNodeRef<T>`        | `graph.stream(ref)` or a Stream hook |
 
 ```tsx
-import type { DataGraph } from 'depa-data-graph-core';
-import { useGraphComputed, useGraphSignal } from 'depa-data-graph-react';
-
-export function Counter(props: { graph: DataGraph<unknown> }) {
-  const counter = useGraphSignal<number, unknown>(props.graph, 'counter');
-  const doubled = useGraphComputed<number, unknown>(
-    props.graph,
-    () => props.graph.get<number>('counter') * 2,
-  );
-
-  return (
-    <div>
-      counter={counter} doubled={doubled}
-    </div>
-  );
+function SearchView({ graph, refs, search }: Props) {
+  const state = useGraphSignal(graph, refs.searchState);
+  return <button onClick={() => search.actions.refresh()}>Refresh</button>;
 }
 ```
 
-Implementation notes:
+The current framework packages expose Signal adapters. A component that owns a
+Stream-output subscription uses `graph.stream(ref).subscribe(...)` in the
+framework's lifecycle/effect primitive and unsubscribes during cleanup; there
+is no implicit `useGraphStream` API.
 
-- `useGraphSignal` creates an internal view-model signal and disposes it on unmount.
-- `useGraphComputed` subscribes via `watch()` and evaluates the selector for the snapshot.
+Framework code receives a state node's `StateNodeHandle`: it reads its
+`.output`, invokes typed `.mutations` for synchronous user changes and
+`.actions` for workflows, and may use public typed
+`.dispatch(handle.operations.*.name(...))` for integrations. It never receives
+a public generic setter. Stream subscriptions dispose with the host
+component/scope; Signal adapters read the current graph state and update only
+when Signal semantics publish a change. Stream adapters must handle the node’s
+immediate current-state replay.
 
-## Vue (`depa-data-graph-vue`)
-
-Exports:
-
-- `useGraphSignal<T>(graph, id): Ref<T>`
-- `useGraph(graph, ids): Record<id, Ref<unknown>>`
-
-```ts
-import type { DataGraph } from 'depa-data-graph-core';
-import { useGraphSignal } from 'depa-data-graph-vue';
-
-export function useCounter(graph: DataGraph<unknown>) {
-  const counter = useGraphSignal<number, unknown>(graph, 'counter');
-  return { counter };
-}
-```
-
-Cleanup is automatically bound to the current Vue scope via `onScopeDispose()`.
-
-## Solid (`depa-data-graph-solid`)
-
-Exports:
-
-- `useGraphSignal<T>(graph, id): Accessor<T>`
-
-```ts
-import type { DataGraph } from 'depa-data-graph-core';
-import { useGraphSignal } from 'depa-data-graph-solid';
-
-export function useCounter(graph: DataGraph<unknown>) {
-  const counter = useGraphSignal<number, unknown>(graph, 'counter');
-  return { counter };
-}
-```
-
-Cleanup is automatically bound to the current Solid owner via `onCleanup()`.
-
-## Vanilla (`depa-data-graph-vanilla`)
-
-Exports:
-
-- `bindElement(graph, id, element, { property, format? }): StopHandle`
-- `createReactiveStore(graph, ids): { subscribe(cb), getSnapshot() }`
-
-```ts
-import type { DataGraph } from 'depa-data-graph-core';
-import { bindElement, createReactiveStore } from 'depa-data-graph-vanilla';
-
-export function mountCounter(el: HTMLElement, graph: DataGraph<unknown>) {
-  const stopBind = bindElement(graph, 'counter', el, { property: 'textContent' });
-
-  const store = createReactiveStore(graph, ['counter'] as const);
-  const stopStore = store.subscribe((v) => console.log('counter', v.counter));
-
-  return () => {
-    stopBind();
-    stopStore();
-  };
-}
-```
-
-## Demo usage
-
-The mixed-framework demo under `examples/demo/` uses these adapter packages in each view.
-
-## Building your own adapter
-
-If you need a custom integration (SSR, different scheduling, etc), you can build your own thin adapter using:
-
-- `watch(getter, cb)` from `depa-data-graph-core`
-- `DataGraph.createViewModelSignal(viewId, selector)` for dependency tracking/debuggability
+React, Vue, Solid, and vanilla adapters all follow this distinction. Their generated/typed APIs accept refs rather than hand-authored IDs whenever possible.

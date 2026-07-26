@@ -27,4 +27,24 @@ describe('vanilla adapter: bindElement', () => {
     await tick();
     expect(el.textContent).toBe('1');
   });
+
+  it('binds a state-node output ref updated through a mutation', async () => {
+    const graph = new DataGraph<unknown>(() => ({}));
+    const input = graph.addSignal('input', 1);
+    const state = graph.addSignalDrivenStateSignalNode({
+      input: input.ref,
+      initial: 0,
+      reducer: (current, next) => current + next,
+      mutations: { add: (current, by: number) => current + by },
+    });
+    const element = { textContent: '' };
+    const stop = bindElement(graph, state.output, element, { property: 'textContent' });
+
+    state.mutations.add(2);
+    await tick();
+    expect(element.textContent).toBe('3');
+
+    stop();
+    graph.dispose();
+  });
 });

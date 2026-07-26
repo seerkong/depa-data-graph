@@ -1,10 +1,6 @@
 import xs, { Stream, Listener } from 'xstream';
-import {
-  DataGraph,
-  StreamGraph,
-  GraphBridge,
-  subscribeStreamToSignal,
-} from 'depa-data-graph-core';
+import { DataGraph } from 'depa-data-graph-core';
+import type { SignalNodeRef } from 'depa-data-graph-core';
 import { watch } from 'depa-data-graph-core';
 
 interface ChatMessage {
@@ -14,12 +10,26 @@ interface ChatMessage {
 
 interface ChatRuntime {
   graph: DataGraph<ChatRuntime>;
-  streamGraph: StreamGraph;
-  bridge: GraphBridge<ChatRuntime>;
-  intents: {
-    sendMessage: (content: string) => void;
-    clearChat: () => void;
+  currentStreamCleanup: (() => void) | null;
+  nextStreamSequence: number;
+  state: {
+    output: SignalNodeRef<ChatState, false>;
+    getState: () => ChatState;
+    mutations: {
+      appendChunk: (chunk: string) => ChatState;
+      finishResponse: (content: string) => ChatState;
+    };
+    actions: {
+      sendMessage: (content: string) => void;
+      clearChat: () => void;
+    };
   };
+}
+
+interface ChatState {
+  messages: ChatMessage[];
+  currentResponse: string;
+  isStreaming: boolean;
 }
 
 const MOCK_RESPONSES = [
@@ -67,80 +77,95 @@ function createChatRuntime(): ChatRuntime {
   const runtime = {} as ChatRuntime;
 
   const graph = new DataGraph<ChatRuntime>(() => runtime);
-  const streamGraph = new StreamGraph();
-  const bridge = new GraphBridge(graph, streamGraph);
-
-  graph.addSignal<ChatMessage[]>('messages', []);
-  graph.addSignal<string>('currentResponse', '');
-  graph.addSignal<boolean>('isStreaming', false);
-  graph.addSignal<string>('inputValue', '');
-
-  graph.addComputed<number>('messageCount', ['messages'], (ctx) => {
-    return ctx.graph.get<ChatMessage[]>('messages').length;
-  });
-
-  graph.addComputed<string>('streamingDisplay', ['currentResponse', 'isStreaming'], (ctx) => {
-    const response = ctx.graph.get<string>('currentResponse');
-    const streaming = ctx.graph.get<boolean>('isStreaming');
-    return streaming ? response + '▊' : response;
-  });
-
-  let currentStreamCleanup: (() => void) | null = null;
-
   runtime.graph = graph;
-  runtime.streamGraph = streamGraph;
-  runtime.bridge = bridge;
+  runtime.currentStreamCleanup = null;
+  runtime.nextStreamSequence = 0;
 
-  runtime.intents = {
-    sendMessage: (content: string) => {
-      if (!content.trim()) return;
-      if (graph.peek<boolean>('isStreaming')) return;
-
-      graph.batch(() => {
-        const messages = graph.peek<ChatMessage[]>('messages');
-        graph.set('messages', [...messages, { role: 'user', content }]);
-        graph.set('currentResponse', '');
-        graph.set('isStreaming', true);
-        graph.set('inputValue', '');
-      });
-
-      const ai$ = createMockAIStream(content);
-
-      currentStreamCleanup = subscribeStreamToSignal(graph, 'currentResponse', ai$, {
-        initial: '',
-        reducer: (prev, chunk) => prev + chunk,
-        onComplete: () => {
-          const finalResponse = graph.peek<string>('currentResponse');
-          graph.batch(() => {
-            const messages = graph.peek<ChatMessage[]>('messages');
-            graph.set('messages', [...messages, { role: 'assistant', content: finalResponse }]);
-            graph.set('currentResponse', '');
-            graph.set('isStreaming', false);
-          });
-          currentStreamCleanup = null;
-        },
-      });
+  const driver = graph.addSignal('chat/state-driver', null);
+  const state = graph.addSignalDrivenStateSignalNode({
+    id: 'chat/state',
+    input: driver.ref,
+    initial: { messages: [], currentResponse: '', isStreaming: false } as ChatState,
+    reducer: (current) => current,
+    mutations: {
+      beginMessage: (current, content: string) => ({
+        messages: [...current.messages, { role: 'user' as const, content }],
+        currentResponse: '',
+        isStreaming: true,
+      }),
+      appendChunk: (current, chunk: string) => ({
+        ...current,
+        currentResponse: current.currentResponse + chunk,
+      }),
+      finishResponse: (current, content: string) => ({
+        messages: [...current.messages, { role: 'assistant' as const, content }],
+        currentResponse: '',
+        isStreaming: false,
+      }),
+      clear: () => ({ messages: [], currentResponse: '', isStreaming: false }),
     },
+    actions: (rt) => ({
+      sendMessage: (content: string) => {
+        if (!content.trim() || rt.getState().isStreaming) {
+          return;
+        }
 
-    clearChat: () => {
-      if (currentStreamCleanup) {
-        currentStreamCleanup();
-        currentStreamCleanup = null;
-      }
-      graph.batch(() => {
-        graph.set('messages', []);
-        graph.set('currentResponse', '');
-        graph.set('isStreaming', false);
-      });
-    },
-  };
+        rt.mutations.beginMessage(content);
+        const ai$ = createMockAIStream(content);
+        const sequence = ++rt.bizRuntime.nextStreamSequence;
+        const source = rt.bizRuntime.graph.addSource(`ai-response-source-${sequence}`, ai$);
+        const response = rt.bizRuntime.graph.addStreamDrivenStateSignalNode({
+          id: `ai-response-state-${sequence}`,
+          input: source.ref,
+          initial: '',
+          reducer: (current, chunk) => current + chunk,
+        });
+        rt.bizRuntime.graph.addConsumer(
+          `ai-response-consumer-${sequence}`,
+          [response.output],
+          (responseRt) => rt.mutations.appendChunk(responseRt.graph.get(response.output)),
+        );
+        const completion = rt.bizRuntime.graph.stream(source.ref).subscribe({
+          next: () => {},
+          error: () => {
+            response.dispose();
+            rt.bizRuntime.currentStreamCleanup = null;
+          },
+          complete: () => {
+            rt.mutations.finishResponse(response.getState());
+            response.dispose();
+            rt.bizRuntime.currentStreamCleanup = null;
+          },
+        });
+        rt.bizRuntime.currentStreamCleanup = () => {
+          completion.unsubscribe();
+          response.dispose();
+        };
+      },
+      clearChat: () => {
+        rt.bizRuntime.currentStreamCleanup?.();
+        rt.bizRuntime.currentStreamCleanup = null;
+        rt.mutations.clear();
+      },
+    }),
+  });
+  runtime.state = state;
+
+  graph.addComputed<number>('messageCount', [state.output], (rt) => {
+    return rt.graph.get(state.output).messages.length;
+  });
+
+  graph.addComputed<string>('streamingDisplay', [state.output], (rt) => {
+    const current = rt.graph.get(state.output);
+    return current.isStreaming ? current.currentResponse + '▊' : current.currentResponse;
+  });
 
   return runtime;
 }
 
 export function mountAIChatDemo(container: HTMLElement): void {
   const runtime = createChatRuntime();
-  const { graph, intents } = runtime;
+  const { graph, state } = runtime;
 
   container.innerHTML = `
     <div class="chat-container">
@@ -189,15 +214,12 @@ export function mountAIChatDemo(container: HTMLElement): void {
       .replace(/\n/g, '<br>');
   }
 
-  watch(
-    () => graph.get<ChatMessage[]>('messages'),
-    (messages) => renderMessages(messages),
-  );
+  watch(() => graph.get(state.output).messages, renderMessages);
 
   watch(
     () => graph.get<string>('streamingDisplay'),
     (display) => {
-      const isStreaming = graph.peek<boolean>('isStreaming');
+      const isStreaming = state.getState().isStreaming;
       if (isStreaming && display) {
         streamingEl.innerHTML = `
           <div class="chat-message assistant streaming">
@@ -213,7 +235,7 @@ export function mountAIChatDemo(container: HTMLElement): void {
   );
 
   watch(
-    () => graph.get<boolean>('isStreaming'),
+    () => graph.get(state.output).isStreaming,
     (streaming) => {
       statusEl.textContent = streaming ? '● Streaming...' : '○ Ready';
       statusEl.className = `chat-status ${streaming ? 'active' : ''}`;
@@ -230,17 +252,19 @@ export function mountAIChatDemo(container: HTMLElement): void {
   );
 
   sendBtn.addEventListener('click', () => {
-    intents.sendMessage(inputEl.value);
+    state.actions.sendMessage(inputEl.value);
+    inputEl.value = '';
   });
 
   inputEl.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      intents.sendMessage(inputEl.value);
+      state.actions.sendMessage(inputEl.value);
+      inputEl.value = '';
     }
   });
 
   clearBtn.addEventListener('click', () => {
-    intents.clearChat();
+    state.actions.clearChat();
   });
 }

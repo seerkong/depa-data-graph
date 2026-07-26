@@ -13,26 +13,26 @@ const IDS = {
 
 export const mainGraphLogic: JsonGraphLogicRegistry<DemoRuntime> = {
   computed: {
-    plus100: (ctx) => ctx.graph.get<number>(IDS.counter) + 100,
-    plus300: (ctx) => ctx.graph.get<number>(IDS.plus100) + 200,
+    plus100: (rt) => rt.graph.get<number>(IDS.counter) + 100,
+    plus300: (rt) => rt.graph.get<number>(IDS.plus100) + 200,
   },
   processor: {
-    counterDerived: (ctx) => {
-      const c = ctx.graph.get<number>(IDS.counter);
-      ctx.graph.set<boolean>(IDS.isEven, c % 2 === 0);
-      ctx.graph.set<string>(IDS.label, c % 2 === 0 ? 'even' : 'odd');
+    counterDerived: (rt) => {
+      const c = rt.graph.get<number>(IDS.counter);
+      rt.graph.set<boolean>(IDS.isEven, c % 2 === 0);
+      rt.graph.set<string>(IDS.label, c % 2 === 0 ? 'even' : 'odd');
     },
-    validateInput: (ctx) => {
-      const text = ctx.graph.get<string>(IDS.helloInput);
+    validateInput: (rt) => {
+      const text = rt.graph.get<string>(IDS.helloInput);
       const trimmed = text.trim();
       const err = trimmed.length > 12 ? 'Too long (max 12 chars)' : null;
-      ctx.graph.set<string | null>(IDS.helloError, err);
+      rt.graph.set<string | null>(IDS.helloError, err);
     },
   },
   consumer: {},
   async: {
     asyncPlus100: {
-      params: (ctx: GraphRuntime<DemoRuntime>) => [ctx.graph.get<number>(IDS.counter)],
+      params: (rt: GraphRuntime<DemoRuntime>) => [rt.graph.get<number>(IDS.counter)],
       task: async (...args: unknown[]) => {
         await delay(350);
         const v = args[0];

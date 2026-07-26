@@ -1,4 +1,4 @@
-import type { DataGraph, GraphNodeIdLike, StopHandle } from 'depa-data-graph-core';
+import type { DataGraph, SignalNodeIdLike, StopHandle } from 'depa-data-graph-core';
 import { watch } from 'depa-data-graph-core';
 
 export type BindElementOptions<TElement, TValue> = {
@@ -8,7 +8,7 @@ export type BindElementOptions<TElement, TValue> = {
 
 export function bindElement<TRuntime, TElement extends Record<string, unknown>, TValue = unknown>(
   graph: DataGraph<TRuntime>,
-  id: GraphNodeIdLike,
+  id: SignalNodeIdLike,
   element: TElement,
   options: BindElementOptions<TElement, TValue>,
 ): StopHandle {

@@ -1,437 +1,211 @@
 # depa-data-graph
 
-A framework-agnostic state management library featuring explicit data graphs, MVI (Model-View-Intent) pattern, and actor-based cross-framework messaging.
+A framework-agnostic reactive state library that models Signal values and Stream events in one explicit `DataGraph`.
 
 English | [中文](./README-CN.md)
 
 ## Packages
 
-| Package                                       | Description                                    | npm                                                                                                                   |
-| --------------------------------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| [depa-data-graph-core](./packages/core)       | Core library: DataGraph, ActorSystem, builders | [![npm](https://img.shields.io/npm/v/depa-data-graph-core)](https://www.npmjs.com/package/depa-data-graph-core)       |
-| [depa-data-graph-react](./packages/react)     | React adapter: Hooks integration               | [![npm](https://img.shields.io/npm/v/depa-data-graph-react)](https://www.npmjs.com/package/depa-data-graph-react)     |
-| [depa-data-graph-vue](./packages/vue)         | Vue adapter: Composition API integration       | [![npm](https://img.shields.io/npm/v/depa-data-graph-vue)](https://www.npmjs.com/package/depa-data-graph-vue)         |
-| [depa-data-graph-solid](./packages/solid)     | Solid adapter: Accessor integration            | [![npm](https://img.shields.io/npm/v/depa-data-graph-solid)](https://www.npmjs.com/package/depa-data-graph-solid)     |
-| [depa-data-graph-vanilla](./packages/vanilla) | Vanilla adapter: DOM bindings & store          | [![npm](https://img.shields.io/npm/v/depa-data-graph-vanilla)](https://www.npmjs.com/package/depa-data-graph-vanilla) |
+| Package                                             | Description                                                                           |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| [depa-data-graph-core](./packages/core)             | Unified DataGraph runtime, state nodes, builders, typed refs, middleware, and streams |
+| [depa-data-graph-codegen](./packages/graph-codegen) | JSON graph validation and TypeScript identity/facade generation                       |
+| [depa-data-graph-react](./packages/react)           | React hooks                                                                           |
+| [depa-data-graph-vue](./packages/vue)               | Vue composables                                                                       |
+| [depa-data-graph-solid](./packages/solid)           | Solid accessors                                                                       |
+| [depa-data-graph-vanilla](./packages/vanilla)       | DOM bindings and reactive stores                                                      |
 
-## Examples
+The [demo](./examples/demo) runs Vanilla, Vue, React, and Solid against the same graph and state-node operations.
 
-| Example                 | Description                                            |
-| ----------------------- | ------------------------------------------------------ |
-| [demo](./examples/demo) | Mixed tech stacks demo (Vanilla + Vue + React + Solid) |
+## Design
 
-## Features
+- One `DataGraph` owns Signal nodes, Stream nodes, edges, validation, snapshots, and lifecycle.
+- Typed `SignalNodeRef<T>` and `StreamNodeRef<T>` make output semantics explicit.
+- Signal sources/computeds and Stream sources/operators/sinks can be connected in all four directions.
+- Four state-node kinds combine Signal or Stream input with Signal or Stream state output.
+- State nodes expose `getState()`, typed `mutations`, typed `actions`, typed `dispatch`, and `dispose()`. They do not expose `set`.
+- Runtime callbacks use `rt`: `rt.graph` is the graph-effect capability and `rt.bizRuntime` contains application services.
+- Signal state outputs suppress `Object.is`-equal publications. Stream state outputs emit every successful transition and replay only the current state to a new subscriber.
+- Stream sources/operators are lazy; sinks and state nodes are eager. Mixed feedback requires an explicit feedback/delay/scheduler boundary.
 
-- **Explicit Data Graph**: Dependencies declared upfront, not tracked at runtime
-- **Framework Agnostic**: Core state management works with any UI framework
-- **Multiple Construction Modes**: JSON DSL, Code DSL, and Imperative API
-- **Actor-Based Messaging**: Cross-framework communication via typed messages
-- **Subgraph Isolation**: Per-framework independent state with bridge effects
-- **MVI Pattern**: Unidirectional data flow with named intents
-- **Timeline / Event Log Foundations**: Ordered append-only timelines, channel fanout, and reducer projections
-- **Module Identity**: Structured node refs, public ports, and scoped subgraph mounting
-
-## Quick Start
+## Install
 
 ```bash
-# Install dependencies
-pnpm install
-
-# Build all packages
-pnpm build
-
-# Start demo dev server
-pnpm dev
-```
-
-## Project Structure
-
-```
-depa-data-graph/
-├── packages/
-│   └── core/                    # depa-data-graph-core
-│       ├── src/
-│       │   ├── graph.ts         # DataGraph class
-│       │   ├── graph-builders.ts # JSON DSL + Code DSL builders
-│       │   ├── actor.ts         # ActorSystem
-│       │   ├── watch.ts         # watch() and untracked() utilities
-│       │   └── index.ts         # Public exports
-│       ├── package.json
-│       └── tsconfig.json
-├── examples/
-│   └── demo/                    # Demo application
-│       ├── src/
-│       │   ├── app/             # Runtime, intents, graph config
-│       │   └── views/           # Vanilla/Vue/React/Solid views
-│       ├── index.html
-│       ├── package.json
-│       └── vite.config.ts
-├── doc/
-│   └── architect/               # Architecture documentation
-├── package.json                 # Root workspace config
-├── pnpm-workspace.yaml
-└── tsconfig.json
-```
-
-## Installation
-
-```bash
-# Using pnpm
 pnpm add depa-data-graph-core alien-signals xstream
-
-# Using npm
-npm install depa-data-graph-core alien-signals xstream
-
-# Using yarn
-yarn add depa-data-graph-core alien-signals xstream
 ```
 
-### Framework adapters
+Framework adapters are separate packages:
 
 ```bash
-# React
 pnpm add depa-data-graph-react react
-
-# Vue
 pnpm add depa-data-graph-vue vue
-
-# Solid
 pnpm add depa-data-graph-solid solid-js
-
-# Vanilla
 pnpm add depa-data-graph-vanilla
 ```
 
-## Usage
-
-```typescript
-import { DataGraph, createCodeGraphBuilder, ActorSystem } from 'depa-data-graph-core';
-
-// Create a data graph
-const graph = new DataGraph(() => runtime);
-
-// Build with Code DSL
-createCodeGraphBuilder(graph)
-  .signal('counter', 0)
-  .computed('doubled', ['counter'], (ctx) => ctx.get('counter') * 2)
-  .consumer('logger', ['counter'], (ctx) => {
-    console.log('Counter:', ctx.get('counter'));
-  });
-
-// Read and write
-graph.get('counter'); // 0
-graph.set('counter', 1); // triggers computed + consumer
-graph.get('doubled'); // 2
-```
-
-## Ordered Timelines And Event Projections
-
-`depa-data-graph-core` also exposes low-level stream foundations for append-only timelines and reducer-style projections:
+## Unified Graph
 
 ```ts
-import {
-  AppendOnlyEventLog,
-  OrderedTimeline,
-  createReducerProjection,
-} from 'depa-data-graph-core';
+import { DataGraph } from 'depa-data-graph-core';
 
-const timeline = new OrderedTimeline<string>();
-const content = timeline.createChannel('content');
-content.append('hello');
-content.append('world');
+const bizRuntime = { logger: console };
+const graph = new DataGraph(() => bizRuntime);
 
+const count = graph.addSignal('count', 1);
+const doubled = graph.addComputed('doubled', [count.ref], (rt) => rt.graph.get(count.ref) * 2);
+
+const countEvents = graph.addSignalToStream('count-events', count.ref);
+const latestCount = graph.addStreamToSignal(
+  'latest-count',
+  countEvents.ref,
+  0,
+  (_state, value) => value,
+);
+
+graph.get(doubled.ref); // 2
+graph.stream(countEvents.ref).subscribe({ next: (value) => console.log(value) });
+graph.get(latestCount.ref); // 1
+```
+
+`graph.set(...)` remains available for ordinary writable Signal nodes such as external drivers. A state-node output ref is read-only and cannot be passed to `set`.
+
+## State Nodes
+
+The input and output semantics are independent:
+
+| Input  | Signal output                 | Stream output                 |
+| ------ | ----------------------------- | ----------------------------- |
+| Signal | `SignalDrivenStateSignalNode` | `SignalDrivenStateStreamNode` |
+| Stream | `StreamDrivenStateSignalNode` | `StreamDrivenStateStreamNode` |
+
+```ts
+const input = graph.addSignal('counter-input', 2);
+
+const counter = graph.addSignalDrivenStateSignalNode({
+  id: 'counter-state',
+  input: input.ref,
+  initial: 0,
+  reducer: (state, value) => state + value,
+  mutations: {
+    increment: (state, by: number) => state + by,
+    replace: (_state, value: number) => value,
+  },
+  actions: (rt) => ({
+    incrementByConfiguredStep() {
+      return rt.mutations.increment(10);
+    },
+  }),
+});
+
+counter.getState(); // 2 after Signal bootstrap
+counter.mutations.increment(3); // 5
+counter.actions.incrementByConfiguredStep(); // 15
+counter.dispatch(counter.operations.mutations.replace(1));
+graph.get(counter.output); // 1
+```
+
+Mutations are named, synchronous, pure transitions. Actions may perform effects, but can update their node only through `rt.mutations` or typed `rt.dispatch`. Calls through `.mutations`, `.actions`, and `.dispatch` share the same observable operation pipeline.
+
+## Event Log Projection
+
+`AppendOnlyEventLog` remains an ordered replayable Stream source. Projection is now a first-class Stream-driven state node:
+
+```ts
+import { AppendOnlyEventLog, DataGraph } from 'depa-data-graph-core';
+
+const graph = new DataGraph(() => ({}));
 const log = new AppendOnlyEventLog<number>();
 log.append(2);
 log.append(3);
 
-const projection = createReducerProjection(log, {
+const source = graph.addSource('counter-events', log.stream());
+const projection = graph.addStreamDrivenStateSignalNode({
+  id: 'counter-projection',
+  input: source.ref,
   initial: 0,
   reducer: (state, entry) => state + entry.value,
+  mutations: { reset: () => 0 },
 });
 
-projection.getState(); // 5
+projection.getState(); // 5; synchronous history was reduced before registration returned
+log.append(4);
+projection.getState(); // 9
 ```
 
-Use `OrderedTimeline` when you need globally ordered appends plus per-channel fanout. Use `AppendOnlyEventLog` and `createReducerProjection` when you need replayable event history and derived snapshots.
+Use `StreamDrivenStateStreamNode` when downstream consumers need a transition Stream. A late subscriber receives the current state once, not the complete transition history. The event log remains the owner of historical events.
 
-## Typed Model Helper (Optional)
+## Construction Modes
 
-If you want compile-time checking for node IDs and value types, you can define a schema and wrap a graph:
-
-```ts
-import { DataGraph, asTypedGraph, defineModel, types } from 'depa-data-graph-core';
-
-const MODEL = defineModel({
-  counter: types.number(),
-  name: types.string(),
-} as const);
-
-const graph = asTypedGraph(new DataGraph(() => runtime), MODEL);
-
-graph.addSignal('counter', 0);
-graph.set('counter', 1); // ok
-// graph.set('counter', 'x'); // TS error
-// graph.get('missing');      // TS error
-```
-
-## Schema-first Typed Graph (Optional)
-
-If you prefer defining a typed graph upfront (instead of wrapping an existing one), use the Schema-first API:
+The imperative API, Code DSL, JSON DSL, schema-first API, module refs, and codegen all support Signal/Stream refs and the four state-node kinds.
 
 ```ts
-import { computed, createTypedGraph, signal } from 'depa-data-graph-core';
+import {
+  createStateNodeSchemaBuilder,
+  createTypedGraph,
+  signal,
+} from 'depa-data-graph-core';
 
-const graph = createTypedGraph(
+type AppRuntime = { defaultStep: number };
+const stateNodes = createStateNodeSchemaBuilder<AppRuntime>();
+
+const typed = createTypedGraph(
   {
-    counter: signal(0),
-    doubled: computed(['counter'], (ctx) => ctx.get<number>('counter') * 2),
+    input: signal(1),
+    counter: stateNodes.signalDrivenStateSignal({
+      input: 'input',
+      initial: 0,
+      reducer: (state, value: number) => state + value,
+      mutations: { add: (state: number, by: number) => state + by },
+      actions: (rt) => ({ addDefault: () => rt.mutations.add(rt.bizRuntime.defaultStep) }),
+    }),
   } as const,
-  () => ({}),
+  () => ({ defaultStep: 2 }),
 );
 
-graph.set('counter', 1);
-graph.get('doubled'); // number
+typed.nodes.counter.mutations.add(2);
+typed.nodes.counter.actions.addDefault();
+typed.get(typed.nodes.counter.output);
 ```
 
-## Module Identity (Optional)
-
-For reusable subgraphs and multi-instance composition, you can define structured refs instead of hand-authoring long-lived string IDs:
-
-```ts
-import { defineGraphModule, input, mountGraph, output, state, toNodeId } from 'depa-data-graph-core';
-
-const StageModule = defineGraphModule('stage', {
-  inputs: {
-    lexicalEvents: input<string[]>(),
-  },
-  outputs: {
-    semanticEvents: output<string[]>(),
-  },
-  state: {
-    lexicalSeq: state<number>(),
-  },
-} as const);
-
-const main = mountGraph(StageModule, { scope: 'agent/main' });
-
-toNodeId(main.inputs.lexicalEvents);
-// 'agent/main::stage.inputs.lexicalEvents'
-```
-
-The canonical string still exists for runtime/debugging, but the ref object becomes the primary long-lived identity in application code.
+Protocol-specific module slots are available as `signalInput`, `streamInput`, `signalOutput`, `streamOutput`, `signalState`, `streamState`, `signalInternal`, and `streamInternal`.
 
 ## Framework Adapters
 
-### React
+Adapters consume Signal refs, including read-only state-node outputs. Updates remain explicit on the state-node handle:
 
-```ts
-import type { DataGraph } from 'depa-data-graph-core';
-import { useGraph, useGraphComputed, useGraphSignal } from 'depa-data-graph-react';
-
-function CounterView(props: { graph: DataGraph<unknown> }) {
-  const counter = useGraphSignal<number, unknown>(props.graph, 'counter');
-  const doubled = useGraphComputed<number, unknown>(
-    props.graph,
-    () => props.graph.get<number>('counter') * 2,
-  );
-
-  const vm = useGraph(props.graph, ['counter'] as const);
-  void vm;
-
-  return `${counter} doubled=${doubled}`;
+```tsx
+function CounterView({ graph, counter }) {
+  const value = useGraphSignal(graph, counter.output);
+  return <button onClick={() => counter.mutations.increment(1)}>{value}</button>;
 }
 ```
 
-### Vue
+The same boundary applies to Vue `useGraphSignal`, Solid `useGraphSignal`, and Vanilla `bindElement`/`createReactiveStore`: adapters read graph state; they do not create a second mutation channel.
 
-```ts
-import type { DataGraph } from 'depa-data-graph-core';
-import { useGraphSignal } from 'depa-data-graph-vue';
+## Breaking Migration
 
-export function useCounter(graph: DataGraph<unknown>) {
-  const counter = useGraphSignal<number, unknown>(graph, 'counter'); // Ref<number>
-  return { counter };
-}
+This release removes the separate Stream graph, graph bridge managers/functions, and reducer-projection wrapper. Migrate as follows:
+
+- Register Stream sources/operators/sinks directly on `DataGraph`.
+- Replace bridge calls with explicit `addSignalToStream` / `addStreamToSignal` nodes or one of the four state-node kinds.
+- Replace reducer projection helpers with `StreamDrivenStateSignalNode` or `StreamDrivenStateStreamNode`.
+- Rename GraphRuntime callback parameters from `ctx` to `rt`; real `MiddlewareContext ctx` variables keep their context name.
+- Replace application `intents` wrappers with typed `.mutations.xxx()` and `.actions.xxx()` calls.
+
+See [the migration guide](./doc/architect/migration-unified-state.md) for the exact old-to-new API matrix.
+
+## Development
+
+```bash
+pnpm install
+pnpm test
+pnpm typecheck
+pnpm lint
+pnpm build
+pnpm dev
 ```
 
-### Solid
-
-```ts
-import type { DataGraph } from 'depa-data-graph-core';
-import { useGraphSignal } from 'depa-data-graph-solid';
-
-export function useCounter(graph: DataGraph<unknown>) {
-  const counter = useGraphSignal<number, unknown>(graph, 'counter'); // Accessor<number>
-  return { counter };
-}
-```
-
-### Vanilla
-
-```ts
-import type { DataGraph } from 'depa-data-graph-core';
-import { bindElement, createReactiveStore } from 'depa-data-graph-vanilla';
-
-export function mountCounter(el: HTMLElement, graph: DataGraph<unknown>) {
-  bindElement(graph, 'counter', el, { property: 'textContent' });
-
-  const store = createReactiveStore(graph, ['counter'] as const);
-  const stop = store.subscribe((v) => console.log('counter', v.counter));
-  return stop;
-}
-```
-
-## Middleware (Plugins)
-
-```ts
-import { loggerPlugin, validationPlugin } from 'depa-data-graph-core';
-
-graph.use(loggerPlugin({ level: 'info' }));
-graph.use(
-  validationPlugin({
-    rules: {
-      counter: (v) => (typeof v === 'number' && v < 0 ? 'Cannot be negative' : null),
-    },
-  }),
-);
-```
-
-## Stream Lifecycle Hooks
-
-```ts
-import { createWebSocketStream } from 'depa-data-graph-core';
-
-const ws$ = createWebSocketStream('wss://example.invalid', {
-  lifecycle: {
-    onDisconnect: (event) => console.log('disconnected', event),
-    shouldReconnect: () => true,
-    reconnectStrategy: (attempt) => (attempt < 5 ? 250 * 2 ** attempt : null),
-  },
-});
-```
-
-## Migration Notes (Breaking Changes)
-
-### Explicit deps are enforced
-
-`computed`, `processor`, `consumer`, and `async` nodes only re-run when their declared `deps` change. Reads of other nodes inside the logic no longer create implicit subscriptions.
-
-Enable deps audit to find undeclared reads:
-
-```ts
-graph.setDepsAudit('warn'); // or 'throw'
-```
-
-Before:
-
-```ts
-graph.addComputed('c', ['a'], (ctx) => ctx.get('a') + ctx.get('b'));
-```
-
-After:
-
-```ts
-graph.addComputed('c', ['a', 'b'], (ctx) => ctx.get('a') + ctx.get('b'));
-```
-
-### Computed nodes are lazy
-
-Computed logic runs only when the node is read (`graph.get('id')`). If you relied on eager/background computation, explicitly read it once during startup, or express the behavior as a `consumer`/`processor`.
-
-## Node Types
-
-| Type          | Description                                 | Outputs                                     |
-| ------------- | ------------------------------------------- | ------------------------------------------- |
-| **Signal**    | Basic reactive state                        | Readable & writable                         |
-| **Computed**  | Derived value from dependencies             | Read-only, auto `computed` flag             |
-| **Processor** | Side-effect that writes to multiple outputs | Declared output signals                     |
-| **Consumer**  | Side-effect that only consumes data         | No outputs (logging, analytics)             |
-| **Async**     | Async computation with loading/error state  | `{id}/result`, `{id}/loading`, `{id}/error` |
-
-## Three Construction Modes
-
-### 1. JSON DSL
-
-```json
-{
-  "version": 1,
-  "nodes": [
-    { "kind": "signal", "id": "counter", "initial": 1 },
-    { "kind": "computed", "id": "doubled", "deps": ["counter"], "logicKey": "doubled" }
-  ]
-}
-```
-
-### 2. Code DSL
-
-```typescript
-createCodeGraphBuilder(graph)
-  .signal('counter', 1)
-  .computed('doubled', ['counter'], (ctx) => ctx.get('counter') * 2)
-  .consumer('logger', ['counter'], (ctx) => console.log(ctx.get('counter')));
-```
-
-### 3. Imperative API
-
-```typescript
-graph.addSignal('counter', 1);
-graph.addComputed('doubled', ['counter'], (ctx) => ctx.get('counter') * 2);
-graph.addConsumer('logger', ['counter'], (ctx) => console.log(ctx.get('counter')));
-```
-
-## Actor Messaging
-
-Frameworks communicate via typed messages:
-
-```typescript
-// Register actor without state
-actorMesh.register('vue', (self, envelope) => {
-  if (envelope.msg.type === 'ping') {
-    self.send(envelope.from, { type: 'pong', text: 'hello' });
-  }
-});
-
-// Register actor with state
-actorMesh.register('react', {
-  initialState: { count: 0 },
-  handler: (self, envelope) => {
-    self.state.count++;
-    if (envelope.msg.type === 'ping') {
-      // Pass self.ref as reply address
-      self.send(envelope.from, { type: 'pong', replyTo: self.ref });
-    }
-  },
-});
-
-// External: use sendFrom (from is explicit)
-actorMesh.sendFrom('system', 'vue', { type: 'ping' });
-
-// External: use refFrom to get a bound ActorRef
-const vueRef = actorMesh.refFrom('system', 'vue');
-vueRef?.send({ type: 'ping' }); // from is bound to 'system'
-
-// Broadcast to all
-actorMesh.broadcastFrom('system', { type: 'ping' });
-```
-
-## Documentation
-
-See [doc/architect/](./doc/architect/) for detailed architecture documentation:
-
-- [Overview](./doc/architect/overview.md) - High-level architecture
-- [DataGraph](./doc/architect/data-graph.md) - Node types, edges, snapshot
-- [Graph Builders](./doc/architect/graph-builders.md) - Three construction modes
-- [Actor System](./doc/architect/actor-system.md) - Cross-framework messaging
-- [Framework Adapters](./doc/architect/framework-adapters.md) - Per-framework integration
-- [Subgraphs](./doc/architect/subgraphs.md) - Subgraph bridging
-- [MVI Flow](./doc/architect/mvi-flow.md) - Unidirectional data flow
-
-## Tech Stack
-
-- [alien-signals](https://github.com/nicksrandall/alien-signals) - Reactive primitives
-- [pnpm](https://pnpm.io/) - Package manager with workspace support
-- [TypeScript](https://www.typescriptlang.org/) - Type safety
-- [Vite](https://vitejs.dev/) - Build tool (for examples)
+Architecture documentation starts at [doc/architect/index.md](./doc/architect/index.md), with focused contracts for [the unified graph](./doc/architect/data-graph.md), [state nodes](./doc/architect/state-nodes.md), [state operations](./doc/architect/state-operations.md), and [lifecycle](./doc/architect/stream-lifecycle.md).
 
 ## License
 
